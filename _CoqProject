@@ -1,5 +1,7 @@
--Q src VTL
+-Q theories VTL
 
-src/PIR.v
-src/Translation.v
-src/Printer.v
+theories/Env.v
+theories/Main.v
+theories/PIR.v
+theories/Printer.v
+theories/Translation.v

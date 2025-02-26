@@ -1,11 +1,7 @@
-Require Import Strings.String.
-Open Scope string.
-
-From SimpleIO Require Import SimpleIO.
-From Coq Require Import String.
+From Coq.Strings Require Import String.
 #[local] Open Scope string_scope.
 
-From VTL Require Import Translation PIR.
+From VTL Require Import PIR.
 
 Definition parens : string -> string :=
   fun x => "(" ++ x ++ ")"
@@ -19,6 +15,7 @@ Definition pretty_print_DefaultUni (D : DefaultUni) : string :=
   match D with
   | DefaultUniInteger => "integer"
   | DefaultUniBool => "bool"
+  | DefaultUniUnit => "unit"
   end
 .
 
@@ -37,10 +34,11 @@ Definition pretty_print_DefaultFun (F : DefaultFun) : string :=
   end
 .
 
-Definition pretty_print_ty (T : ty) : string :=
+Fixpoint pretty_print_ty (T : ty) : string :=
   match T with
   | Ty_Builtin D => "con " ++ pretty_print_DefaultUni D
-  | Ty_Fun T1 T2 => "ERROR: undefined"
+  | Ty_Fun T1 T2 => pretty_print_ty T1 ++ " -> " ++ pretty_print_ty T2
+  | UNDEFINED s => "ERROR: " ++ s
   end
 .
 
@@ -60,6 +58,12 @@ Fixpoint pretty_print' (t : term) : string :=
   end
 .
 
+Definition print_as_program (t : term) :=
+  parens ("program" ++ " " ++ "1.1.0" ++ " " ++
+    (pretty_print' t)
+  )
+.
+
 (* λ(x : Int) . x *)
 Definition identity_ast : term :=
   LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")
@@ -73,19 +77,4 @@ Definition plus_ast : term :=
         (App (App (Builtin AddInteger) (Var "x")) (Var "y"))))
   (Constant (Ty_Builtin DefaultUniInteger) "1")).
 
-Definition print_as_program (t : term) :=
-  parens ("program" ++ " " ++ "1.1.0" ++ " " ++
-    (pretty_print' t)
-  )
-.
-Import IO.Notations.
-
-Definition test_file := (to_pir identity_EAst).
-Eval cbv in (print_as_program test_file).
-Definition main : IO unit :=
-  chan <- open_out "test.pir" ;;
-  output_string chan (print_as_program test_file) ;;
-  close_out chan
-.
-
-RunIO main.
+(* Eval cbv in (print_as_program identity_ast). *)
