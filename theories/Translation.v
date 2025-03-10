@@ -11,10 +11,7 @@ From MetaCoq.Utils Require Import MCPrelude.
 From VTL Require Import Env.
 From VTL Require PIR.
 
-From Coq Require Import String.
-From Coq Require Import Nat.
-From Coq Require Import ZArith.
-From Coq Require Import List.
+From Coq Require Import String BinInt List.
 From Coq Require Import Basics.
 
 Local Open Scope string_scope.
@@ -31,9 +28,9 @@ Definition remap_ty (kn : kername) (uni : PIR.DefaultUni) :=
 (* Look at integer and nat types in PIR *)
 Definition remap_env : env PIR.ty :=
   [
-    remap_ty <%% nat %%> (PIR.DefaultUniInteger);
-    remap_ty <%% bool %%> (PIR.DefaultUniBool);
-    remap_ty <%% unit %%> (PIR.DefaultUniUnit)
+    remap_ty <%% Z    %%> (PIR.DefaultUniInteger);
+    remap_ty <%% unit %%> (PIR.DefaultUniUnit);
+    remap_ty <%% bool %%> (PIR.DefaultUniBool)
   ].
 
 (* Since we don't remap to string we have to use two maps *)
@@ -76,7 +73,7 @@ match t return annots box_type t -> PIR.term with
                 end in
       PIR.LamAbs na' dom_ty (translate_term TT body a) (* extend context *)
 | tApp t1 t2 => fun '(bt, (T1, T2)) => 
-    PIR.App (translate_term TT t1 T1) (translate_term TT t2 T2) (* fails for multiple arguments *)
+    PIR.Apply (translate_term TT t1 T1) (translate_term TT t2 T2) (* fails for multiple arguments *)
 | _ => fun _ => PIR.Var "notSupported"
 end.
 
@@ -87,6 +84,7 @@ Definition identity_EAst : term :=
     (tVar (s_to_bs "x")).
 
 Definition ann_id :=
-  (TArr (TConst <%% nat %%>) (TConst <%% nat %%>), TBox).
+  (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
 
-(* Eval cbv in ((translate_term remap_env identity_EAst) ann_id). *)
+(* Eval cbv in <%% Z %%>. *)
+Eval cbv in ((translate_term remap_env identity_EAst) ann_id).

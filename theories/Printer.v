@@ -1,80 +1,53 @@
-From Coq.Strings Require Import String.
-#[local] Open Scope string_scope.
+From Coq Require Import String BinInt List.
 
-From VTL Require Import PIR.
+(* printing functionality *)
+From SimpleIO Require Import SimpleIO.
 
-Definition parens : string -> string :=
-  fun x => "(" ++ x ++ ")"
-.
+Import ListNotations.
+Local Open Scope string_scope.
+Local Open Scope Z_scope.
 
-Definition brackets : string -> string :=
-  fun x => "[" ++ x ++ "]"
-.
-
-Definition pretty_print_DefaultUni (D : DefaultUni) : string :=
-  match D with
-  | DefaultUniInteger => "integer"
-  | DefaultUniBool => "bool"
-  | DefaultUniUnit => "unit"
-  end
-.
-
-Definition pretty_print_DefaultFun (F : DefaultFun) : string :=
-  match F with
-  | AddInteger => "addInteger"
-  | SubtractInteger => "subtractInteger"
-  | MultiplyInteger => "multiplyInteger"
-  | DivideInteger => "divideInteger"
-  | QuotientInteger => "quotientInteger"
-  | RemainderInteger => "remainderInteger"
-  | ModInteger => "modInteger"
-  | EqualsInteger => "equalsInteger"
-  | LessThanInteger => "lessThanInteger"
-  | LessThanEqualsInteger => "lessThanEqualsInteger"
-  end
-.
-
-Fixpoint pretty_print_ty (T : ty) : string :=
-  match T with
-  | Ty_Builtin D => "con " ++ pretty_print_DefaultUni D
-  | Ty_Fun T1 T2 => pretty_print_ty T1 ++ " -> " ++ pretty_print_ty T2
-  | UNDEFINED s => "ERROR: " ++ s
-  end
-.
-
-Fixpoint pretty_print' (t : term) : string :=
-  match t with
-  | Var x => x
-  | LamAbs x T t => parens (
-      "lam " ++ x ++ " "
-      ++ parens (pretty_print_ty T)
-      ++ " " ++ (pretty_print' t)
-    )
-  | App t1 t2 => brackets (
-    (pretty_print' t1) ++ " " 
-    ++ pretty_print' t2)
-  | Builtin def => parens ("builtin " ++ (pretty_print_DefaultFun def))
-  | Constant T v => parens ((pretty_print_ty T) ++ " " ++ v)
-  end
-.
-
-Definition print_as_program (t : term) :=
-  parens ("program" ++ " " ++ "1.1.0" ++ " " ++
-    (pretty_print' t)
-  )
-.
+From VTL Require Import PIR Pretty Translation.
 
 (* λ(x : Int) . x *)
 Definition identity_ast : term :=
   LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")
 .
 
-(* (λ(x : Int) . (λ(y : Int). x + y)) 1 *)
+(*(* (λ(x : Int) . (λ(y : Int). x + y)) 1 *)
 Definition plus_ast : term :=
-  (App
+  (Apply
     (LamAbs "x" (Ty_Builtin DefaultUniInteger)
       (LamAbs "y" (Ty_Builtin DefaultUniInteger)
-        (App (App (Builtin AddInteger) (Var "x")) (Var "y"))))
-  (Constant (Ty_Builtin DefaultUniInteger) "1")).
+        (Apply (Apply (Builtin AddInteger) (Var "x")) (Var "y"))))
+  (Constant (ValueOf DefaultUniInteger 1))).*)
 
-(* Eval cbv in (print_as_program identity_ast). *)
+(* Definition let_ast : term :=
+  (Let NonRec 
+    [(TermBind Strict 
+        (VarDecl "x" (Ty_Builtin DefaultUniInteger)) 
+        (Error (Ty_Builtin DefaultUniInteger)))]
+    (Apply 
+      (Apply (Builtin EqualsInteger) 
+             (Apply 
+                (Apply (Builtin AddInteger) (Constant (ValueOf DefaultUniInteger 10)))
+                (Var "x")))
+      (Constant (ValueOf DefaultUniInteger 5)))). *)
+
+
+Import IO.Notations.
+
+(* Set stdin/stdout so we can run main from the command line *)
+RunIO IOMode Forward.
+(* Automatically assign the right integer types (hopefully) *)
+RunIO Smart On.
+
+Definition test_pir_ast := ((translate_term remap_env identity_EAst) ann_id).
+Eval cbv in (print_as_program test_pir_ast).
+Definition main : IO unit :=
+  chan <- open_out "./output/test.pir" ;;
+  output_string chan (print_as_program test_pir_ast) ;;
+  close_out chan
+.
+
+(* RunIO main. *)

@@ -1,7 +1,8 @@
 -Q theories VTL
 
 theories/Env.v
-theories/Main.v
 theories/PIR.v
+theories/Pretty.v
 theories/Printer.v
 theories/Translation.v
+theories/Semantics.v
