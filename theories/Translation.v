@@ -57,8 +57,6 @@ match bt with
 | _ => PIR.UNDEFINED "NotImplemented"
 end.
 
-Open Scope program_scope.
-
 (* translation based on ConCerts cameLIGO extraction *)
 Fixpoint translate_term (TT : env PIR.ty) (t : term) 
                         {struct t} : annots box_type t -> PIR.term :=
@@ -86,5 +84,8 @@ Definition identity_EAst : term :=
 Definition ann_id :=
   (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
 
+Check ann_id.
+
+Check (translate_term remap_env identity_EAst).
 (* Eval cbv in <%% Z %%>. *)
-Eval cbv in ((translate_term remap_env identity_EAst) ann_id).
+Eval cbv in (translate_term remap_env identity_EAst ann_id).

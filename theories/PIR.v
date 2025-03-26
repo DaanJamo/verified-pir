@@ -110,7 +110,6 @@ Inductive ty :=
   | UNDEFINED : string -> ty
 .
 
-(* for now, we trust the string representing a value is correct *)
 Inductive term :=
   | Var      : name -> term
   | LamAbs   : binderName -> ty -> term -> term
@@ -118,3 +117,87 @@ Inductive term :=
   | Builtin  : DefaultFun -> term
   | Constant : constant -> term
 .
+
+Declare Scope plutus_scope.
+
+Declare Custom Entry plutus_term.
+Declare Custom Entry plutus_ty.
+Declare Custom Entry plutus_kind.
+
+Module PlutusNotations.
+
+  Notation "<{ e }>" := e (e custom plutus_term at level 99) : plutus_scope.
+  Notation "<{{ e }}>" := e (e custom plutus_ty at level 99) : plutus_scope.
+  Notation "<{{{ e }}}>" := e (e custom plutus_kind at level 99) : plutus_scope.
+  Notation "( x )" := x (in custom plutus_term, x at level 99) : plutus_scope.
+  Notation "( x )" := x (in custom plutus_ty, x at level 99) : plutus_scope.
+  Notation "( x )" := x (in custom plutus_kind, x at level 99) : plutus_scope.
+  Notation "x" := x (in custom plutus_term at level 0, x constr at level 0) : plutus_scope.
+  Notation "x" := x (in custom plutus_ty at level 0, x constr at level 0) : plutus_scope.
+  Notation "x" := x (in custom plutus_kind at level 0, x constr at level 0) : plutus_scope.
+  Notation "{ x }" := x (in custom plutus_term at level 1, x constr) : plutus_scope.
+  Notation "{ x }" := x (in custom plutus_ty at level 1, x constr) : plutus_scope.
+  Notation "{ x }" := x (in custom plutus_kind at level 1, x constr) : plutus_scope.
+
+
+  #[global]
+  Open Scope plutus_scope.
+
+  (* Term notations *)
+  Notation "'λ' x :: ty , body" := (LamAbs x ty body) (in custom plutus_term at level 51, right associativity).
+  (* Notation "'Λ' X :: K , body" := (TyAbs X K body) (in custom plutus_term at level 51, right associativity). *)
+  Notation "t1 ⋅ t2" := (Apply t1 t2) (in custom plutus_term at level 50, left associativity).
+  (* Notation "t @ T" := (TyInst t T) (in custom plutus_term at level 50, left associativity). *)
+
+
+  (* Builtin notations *)
+  Notation "(+)" := (Builtin AddInteger) (in custom plutus_term).
+  (* Notation "'ifthenelse'" := (Builtin IfThenElse). *)
+  Notation "t1 '==' t2" := (<{ {Builtin EqualsInteger} ⋅ t1 ⋅ t2 }>)
+    (in custom plutus_term at level 50, no associativity).
+  Notation "t1 '+' t2" := (<{ {Builtin AddInteger} ⋅ t1 ⋅ t2 }>)
+    (in custom plutus_term at level 50, left associativity).
+  Notation "t1 '-' t2" := (<{ {Builtin SubtractInteger} ⋅ t1 ⋅ t2 }>)
+    (in custom plutus_term at level 50, left associativity).
+  Notation "t1 '*' t2" := (<{ {Builtin MultiplyInteger} ⋅ t1 ⋅ t2 }>)
+    (in custom plutus_term at level 50, left associativity).
+
+  (* / collides with substitution notation *)
+  (*
+  Notation "t1 '/' t2" := (<{ {Builtin DivideInteger} ⋅ t1 ⋅ t2 }>)
+    (in custom plutus_term at level 50, left associativity).
+      *)
+
+  (* Constants *)
+  Notation "'CInt' x" := (Constant (ValueOf DefaultUniInteger x)) (in custom plutus_term at level 49).
+  Notation "'CBool' x" := (Constant (ValueOf DefaultUniBool x)) (in custom plutus_term at level 49).
+  (* Notation "'CBS' xs" := (Constant (ValueOf DefaultUniByteString xs)) (in custom plutus_term at level 49). *)
+  Notation "'()'" := (Constant (ValueOf DefaultUniUnit tt)) (in custom plutus_term).
+  Notation "'true'" := (Constant (ValueOf DefaultUniBool true)) (in custom plutus_term).
+  Notation "'false'" := (Constant (ValueOf DefaultUniBool false)) (in custom plutus_term).
+
+  (* Built-in types *)
+  Notation "'ℤ'" := (Ty_Builtin DefaultUniInteger) (in custom plutus_term).
+  Notation "'bool'" := (Ty_Builtin DefaultUniBool) (in custom plutus_term).
+  Notation "'unit'" := (Ty_Builtin DefaultUniUnit) (in custom plutus_term).
+  Notation "X '→' Y" := (Ty_Fun X Y) (in custom plutus_term at level 49, right associativity).
+  (* Notation "'bytestring'" := (Ty_Builtin DefaultUniByteString) (in custom plutus_term at level 51, right associativity). *)
+
+  (* String notation for list byte (bytestring and string)
+
+  Pretty-print values of type list byte (used for pir's bytestring and string
+  representation) as string literals, for readability.
+
+  The parsing function will always fail, as we won't accept string literal
+  notation in the parser, which has different mechanisms in Haskell and Coq
+  *)
+
+  (* String Notation requires a monomorphised type *)
+  Notation bytes := (list byte) (only parsing).
+
+  Definition parse_bytes (x : bytes) := x.
+  Definition print_bytes (x : bytes) := x.
+
+  String Notation bytes parse_bytes print_bytes : plutus_scope.
+
+End PlutusNotations.

@@ -4,36 +4,24 @@ From Coq Require Import String BinInt List.
 From SimpleIO Require Import SimpleIO.
 
 Import ListNotations.
+
+From VTL Require Import PIR Pretty Translation.
+Import PlutusNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 
-From VTL Require Import PIR Pretty Translation.
-
-(* λ(x : Int) . x *)
 Definition identity_ast : term :=
-  LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")
+  <{ λ "x" :: ℤ, {Var "x"} }>
 .
 
-(*(* (λ(x : Int) . (λ(y : Int). x + y)) 1 *)
+Check identity_ast.
+
 Definition plus_ast : term :=
-  (Apply
-    (LamAbs "x" (Ty_Builtin DefaultUniInteger)
-      (LamAbs "y" (Ty_Builtin DefaultUniInteger)
-        (Apply (Apply (Builtin AddInteger) (Var "x")) (Var "y"))))
-  (Constant (ValueOf DefaultUniInteger 1))).*)
+  <{ (λ "x" :: ℤ, λ "y" :: ℤ, {Var "x"} + {Var "y"}) ⋅ CInt 1 }>.
 
 (* Definition let_ast : term :=
-  (Let NonRec 
-    [(TermBind Strict 
-        (VarDecl "x" (Ty_Builtin DefaultUniInteger)) 
-        (Error (Ty_Builtin DefaultUniInteger)))]
-    (Apply 
-      (Apply (Builtin EqualsInteger) 
-             (Apply 
-                (Apply (Builtin AddInteger) (Constant (ValueOf DefaultUniInteger 10)))
-                (Var "x")))
-      (Constant (ValueOf DefaultUniInteger 5)))). *)
-
+ (Let NonRec [(TermBind Strict (VarDecl "x" ℤ) (Error ℤ))] 
+    <{ CInt 10 + {Var "x"} + CInt 5 }>). *)
 
 Import IO.Notations.
 
