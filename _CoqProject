@@ -4,5 +4,6 @@ theories/Env.v
 theories/PIR.v
 theories/Pretty.v
 theories/Printer.v
-theories/Translation.v
 theories/Semantics.v
+theories/Semantics/BigStepPIR.v
+theories/Translation.v

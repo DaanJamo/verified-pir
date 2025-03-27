@@ -14,7 +14,6 @@ Definition identity_ast : term :=
   LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")
 .
 
-(*(* (λ(x : Int) . (λ(y : Int). x + y)) 1 *)
 Definition plus_ast : term :=
   (Apply
     (LamAbs "x" (Ty_Builtin DefaultUniInteger)

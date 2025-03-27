@@ -4,15 +4,12 @@ From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
 From MetaCoq.Erasure.Typed Require Import Extraction.
 From MetaCoq.Erasure.Typed Require Import ResultMonad.
-From MetaCoq.Erasure Require Import EAst.
-From MetaCoq.Erasure Require Import EAstUtils.
-From MetaCoq.Utils Require Import MCList.
-From MetaCoq.Utils Require Import MCPrelude.
-From VTL Require Import Env.
-From VTL Require PIR.
+From MetaCoq.Erasure Require Import EAst EAstUtils.
+From MetaCoq.Utils Require Import MCList MCPrelude.
+
+From VTL Require Import Env PIR.
 
 From Coq Require Import String BinInt List.
-From Coq Require Import Basics.
 
 Local Open Scope string_scope.
 
@@ -77,7 +74,8 @@ match t return annots box_type t -> PIR.term with
 | _ => fun _ => PIR.Var "notSupported"
 end.
 
-(* For now, we pass manual annotations until I set up a proper pipeline *)
+(* Lambda Box T is the combination of an EAst term with a dependent tree of its types
+  For now, we pass manual annotations until I set up a proper pipeline *)
 
 Definition identity_EAst : term :=
   tLambda (nNamed (s_to_bs "x")) 
@@ -86,5 +84,4 @@ Definition identity_EAst : term :=
 Definition ann_id :=
   (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
 
-(* Eval cbv in <%% Z %%>. *)
-Eval cbv in ((translate_term remap_env identity_EAst) ann_id).
+Eval cbv in (translate_term remap_env identity_EAst ann_id).

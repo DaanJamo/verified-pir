@@ -1,5 +1,4 @@
-From Coq Require Import String.
-From Coq Require Import List.
+From Coq Require Import String List.
 
 Import ListNotations.
 
