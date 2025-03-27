@@ -8,9 +8,9 @@
     "**/.git": true,
     "**/.svn": true,
     "**/.hg": true,
-    "**/CVS": true,
     "**/.DS_Store": true,
-    "**/Thumbs.db": true
+    "**/Thumbs.db": true,
+    "**/CVS": true
   },
-  "coq-lsp.check_only_on_request": false
+  "coq-lsp.check_only_on_request": true
 }

@@ -54,8 +54,6 @@ match bt with
 | _ => PIR.UNDEFINED "NotImplemented"
 end.
 
-Open Scope program_scope.
-
 (* translation based on ConCerts cameLIGO extraction *)
 Fixpoint translate_term (TT : env PIR.ty) (t : term) 
                         {struct t} : annots box_type t -> PIR.term :=

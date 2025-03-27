@@ -2,6 +2,7 @@ From Coq Require Import String BinInt List.
 
 (* afaik Coq has no builtin string conversion methods
 for its primitive types so we import the ones from QuickChick *)
+(* but MetaCoq does! rewrite incoming *)
 From QuickChick Require Import Show.
 Import ShowFunctions.
 
