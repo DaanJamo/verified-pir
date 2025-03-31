@@ -26,6 +26,8 @@ Function subst (x : string) (s : term) (t : term) {struct t} : term :=
       Constant u
   | Builtin d =>
       Builtin d
+  | Error T =>
+      Error T
   end
 .
 

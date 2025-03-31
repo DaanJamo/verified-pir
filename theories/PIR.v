@@ -116,6 +116,7 @@ Inductive term :=
   | Apply    : term -> term -> term
   | Builtin  : DefaultFun -> term
   | Constant : constant -> term
+  | Error    : ty -> term
 .
 
 Declare Scope plutus_scope.
