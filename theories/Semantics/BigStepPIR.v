@@ -50,6 +50,17 @@ Inductive eval : term -> term -> nat -> Prop :=
   | E_Constant : forall j a,
       j = 0 ->
       Constant a =[j]=> Constant a
+  (* | E_Error : forall j T,
+      j = 0 ->
+      Error T =[j]=> Error T
+  | E_Error_Apply1 : forall j t1 t2 j1 T,
+      j = j1 + 1 ->
+      t1 =[j1]=> Error T ->
+      Apply t1 t2 =[j]=> Error T
+  | E_Error_Apply2 : forall j t1 t2 j2 T,
+      j = j2 + 1 ->
+      t2 =[j2]=> Error T ->
+      Apply t1 t2 =[j]=> Error T *)
   (** Builtins: partial application *)
 
 where "t '=[' j ']=>' v" := (eval t v j).

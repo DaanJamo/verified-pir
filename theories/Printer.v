@@ -3,10 +3,9 @@ From Coq Require Import String BinInt List.
 (* printing functionality *)
 From SimpleIO Require Import SimpleIO.
 
-Import ListNotations.
+From VTL Require Import Env PIR Pretty Translation.
 
-From VTL Require Import PIR Pretty Translation.
-Import PlutusNotations.
+Import PlutusNotations ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 
@@ -28,7 +27,7 @@ RunIO IOMode Forward.
 (* Automatically assign the right integer types (hopefully) *)
 RunIO Smart On.
 
-Definition test_pir_ast := ((translate_term remap_env nil identity_EAst) ann_id).
+Definition test_pir_ast := (translate_unsafe nil identity_EAst ann_id).
 Eval cbv in (print_as_program test_pir_ast).
 Definition main : IO unit :=
   chan <- open_out "./output/test.pir" ;;

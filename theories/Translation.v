@@ -3,9 +3,8 @@ From MetaCoq.Erasure.Typed Require Import ExAst.
 From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
 From MetaCoq.Erasure.Typed Require Import Extraction.
-From MetaCoq.Erasure.Typed Require Import ResultMonad.
 From MetaCoq.Erasure Require Import EAst EAstUtils.
-From MetaCoq.Utils Require Import MCList MCString MCPrelude.
+From MetaCoq.Utils Require Import MCList MCString MCPrelude utils.
 
 From VTL Require Import Env PIR.
 
@@ -14,6 +13,7 @@ From Coq Require Import String BinInt List.
 Local Open Scope string_scope.
 
 Import Kernames ListNotations.
+Import MCMonadNotation.
 
 Notation "'bs_to_s' s" := (bytestring.String.to_string s) (at level 200).
 Notation "'s_to_bs' s" := (bytestring.String.of_string s) (at level 200).
@@ -30,7 +30,6 @@ Definition remap_env : env PIR.ty :=
     remap_ty <%% bool %%> (PIR.DefaultUniBool)
   ].
 
-(* Since we don't remap to string we have to use two maps *)
 Definition remap_fun (kn : kername) (df : PIR.DefaultFun) :=
   (kn, PIR.Builtin df).
 
@@ -43,54 +42,74 @@ Definition get_name (na : name) : string :=
   | nNamed nm => if nm =? "_" then "a" else nm
   end.
 
-Definition get_type (TT : env PIR.ty) : box_type -> PIR.ty :=
+Definition get_type (TT : env PIR.ty) : box_type -> option PIR.ty :=
   fix go (bt : box_type) :=
   match bt with
-  | TBox => PIR.Ty_Builtin (PIR.DefaultUniUnit)
-  | TArr dom codom => PIR.Ty_Fun (go dom) (go codom)
-  | TConst kn => let cst := string_of_kername kn in
-      with_default (PIR.UNDEFINED "NotInMap") (lookup TT cst)
-  | TAny => PIR.UNDEFINED "UnknownType"
-  | _ => PIR.UNDEFINED "NotImplemented"
+  | TBox => Some (PIR.Ty_Builtin (PIR.DefaultUniUnit))
+  | TArr dom codom => 
+    ty1 <- go dom ;;
+    ty2 <- go codom ;;
+    Some (PIR.Ty_Fun ty1 ty2)
+  | TConst kn => lookup TT (string_of_kername kn)
+  | _ => None
   end.
 
-(* translation based on ConCerts cameLIGO extraction *)
+(* translate to option term with welltyped subset *)
+(* proof that welltyped => some t *)
+(* use var approach of malf? *)
 Fixpoint translate_term (TT : env PIR.ty) (ctx : context) (t : term) 
-                        {struct t} : annots box_type t -> PIR.term :=
-  match t return annots box_type t -> PIR.term with
-  | tBox => fun bt => PIR.Constant (ValueOf DefaultUniUnit tt) (* boxes become the constructor of the [unit] type *)
-  | tRel n => fun bt =>
+                        {struct t} : annots box_type t -> option PIR.term :=
+  match t return annots box_type t -> option PIR.term with
+  | tBox => fun b_ty => Some (PIR.Constant (ValueOf DefaultUniUnit tt)) (* temporary constant *)
+  | tRel n => fun b_ty =>
     match nth_error ctx n with
     | Some {| decl_name := na |} =>
       match na with
-      | nAnon => PIR.Error (PIR.UNDEFINED ("Anonymous (" ++ string_of_nat n ++ ")"))
-      | nNamed id => PIR.Var id
+      | nAnon => None
+      | nNamed id => Some (PIR.Var id)
       end
-    | None => PIR.Error (PIR.UNDEFINED ("UnboundRel(" ++ string_of_nat n ++ ")"))
+    | None => None
     end
-  | tLambda na body => fun '(bt, a) =>
-      match ExAst.decompose_arr bt with
-      | ([], _) => PIR.Error (PIR.UNDEFINED "LambdaTypeIsNotAFunction")
+  | tLambda na bt => fun '(b_ty, a) =>
+      match ExAst.decompose_arr b_ty with
+      | ([], _) => None
       | (ty :: _, _) =>
-        match get_type TT ty with
-        | PIR.UNDEFINED _ => PIR.Error (PIR.UNDEFINED "TypeNotDefined")
-        | ty' => let na' := get_name na in (* get fresh name from context *)
-          LamAbs na' ty' (translate_term TT (vass (nNamed (s_to_bs na')) :: ctx) body a) 
-        end
+        ty' <- get_type TT ty ;;
+        let na' := get_name na in (* get fresh name from context *)
+        bpt <- (translate_term TT (vass (nNamed (s_to_bs na')) :: ctx) bt a) ;;
+        Some (LamAbs na' ty' bpt)
       end
-  | tApp t1 t2 => fun '(bt, (T1, T2)) => 
-      PIR.Apply (translate_term TT ctx t1 T1) (translate_term TT ctx t2 T2) (* fails for multiple arguments *)
-  | _ => fun _ => PIR.Error (PIR.UNDEFINED "NotSupported")
+  | tApp t1 t2 => fun '(b_ty, (ty1, ty2)) => (* does not handle all arguments yet, eta expansion?*)
+    pt1 <- translate_term TT ctx t1 ty1 ;;
+    pt2 <- translate_term TT ctx t2 ty2 ;;
+    Some (PIR.Apply pt1 pt2)
+  | _ => fun _ => None
   end.
 
-(* When the translation becomes more complicated, we might need to recurse *)
-Fixpoint isError pt : Prop :=
-  match pt with
-  | PIR.Error _ => True
-  | PIR.LamAbs _ _ b => isError b
-  | PIR.Apply pt1 pt2 => isError pt1 /\ isError pt2 
-  | _ => False
+Lemma unfold_lamAbs TT ctx na bt b_ty a :
+  translate_term TT ctx (tLambda na bt) (b_ty, a) = 
+  match ExAst.decompose_arr b_ty with
+  | ([], _) => None
+  | (ty :: _, _) =>
+    ty' <- get_type TT ty ;;
+    let na' := get_name na in (* get fresh name from context *)
+    bpt <- (translate_term TT (vass (nNamed (s_to_bs na')) :: ctx) bt a) ;;
+    Some (LamAbs na' ty' bpt)
   end.
+Proof.
+  auto.
+Qed.
+
+Lemma unfold_app TT ctx t1 t2 b_ty ty1 ty2 pt1 pt2 : 
+  translate_term TT ctx t1 ty1 = Some pt1 ->
+  translate_term TT ctx t2 ty2 = Some pt2 ->
+  translate_term TT ctx (tApp t1 t2) (b_ty, (ty1, ty2)) = Some (PIR.Apply pt1 pt2).
+Proof.
+  intros. simpl. now rewrite H, H0.
+Qed.
+
+Definition translate_unsafe ctx (t : term) (ann : annots box_type t) := 
+  with_default (PIR.Error (PIR.UNDEFINED "TranslationFailed")) ((translate_term remap_env ctx t) ann).
 
 (* Lambda Box T is the combination of an EAst term with a dependent tree of its types
   For now, we pass manual annotations until I set up a proper pipeline *)
@@ -102,4 +121,4 @@ Definition identity_EAst : term :=
 Definition ann_id :=
   (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
 
-Eval cbv in (translate_term remap_env nil identity_EAst ann_id).
+Eval cbv in (translate_unsafe nil identity_EAst ann_id).
