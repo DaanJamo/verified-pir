@@ -36,25 +36,24 @@ Definition remap_fun (kn : kername) (df : PIR.DefaultFun) :=
 Import BasicAst EAst.
 
 (* TODO: extend with context to get fresh variable names *)
-Definition get_name (na : name) : string :=
+(* Definition get_name (na : name) : string :=
   match na with
   | nAnon => "a"
   | nNamed nm => if nm =? "_" then "a" else nm
-  end.
+  end. *)
 
-Definition get_type (TT : env PIR.ty) : box_type -> option PIR.ty :=
-  fix go (bt : box_type) :=
-  match bt with
+Definition translate_ty (TT : env PIR.ty) : box_type -> option PIR.ty :=
+  fix go (ty : box_type) :=
+  match ty with
   | TBox => Some (PIR.Ty_Builtin (PIR.DefaultUniUnit))
-  | TArr dom codom => 
-    ty1 <- go dom ;;
-    ty2 <- go codom ;;
-    Some (PIR.Ty_Fun ty1 ty2)
+  | TArr a b => 
+    a' <- go a ;;
+    b' <- go b ;;
+    Some (PIR.Ty_Fun a' b')
   | TConst kn => lookup TT (string_of_kername kn)
   | _ => None
   end.
 
-(* translate to option term with welltyped subset *)
 (* proof that welltyped => some t *)
 (* use var approach of malf? *)
 Fixpoint translate_term (TT : env PIR.ty) (ctx : context) (t : term) 
@@ -65,45 +64,43 @@ Fixpoint translate_term (TT : env PIR.ty) (ctx : context) (t : term)
     match nth_error ctx n with
     | Some {| decl_name := na |} =>
       match na with
-      | nAnon => None
+      | nAnon => None (* Anonymous names*)
       | nNamed id => Some (PIR.Var id)
       end
     | None => None
     end
-  | tLambda na bt => fun '(b_ty, a) =>
-      match ExAst.decompose_arr b_ty with
-      | ([], _) => None
-      | (ty :: _, _) =>
-        ty' <- get_type TT ty ;;
-        let na' := get_name na in (* get fresh name from context *)
-        bpt <- (translate_term TT (vass (nNamed (s_to_bs na')) :: ctx) bt a) ;;
-        Some (LamAbs na' ty' bpt)
+  | tLambda (nNamed x) t => fun '(ty, t_ty) =>
+      match ty with
+      | TArr a _ =>
+        a' <- translate_ty TT a ;;
+        t' <- translate_term TT (vass (nNamed (s_to_bs x)) :: ctx) t t_ty ;;
+        Some (LamAbs x a' t')
+      | _ => None
       end
-  | tApp t1 t2 => fun '(b_ty, (ty1, ty2)) => (* does not handle all arguments yet, eta expansion?*)
-    pt1 <- translate_term TT ctx t1 ty1 ;;
-    pt2 <- translate_term TT ctx t2 ty2 ;;
-    Some (PIR.Apply pt1 pt2)
+  | tApp s t => fun '(_, (s_ty, t_ty)) => (* does not handle all arguments yet, eta expansion?*)
+    s' <- translate_term TT ctx s s_ty ;;
+    t' <- translate_term TT ctx t t_ty ;;
+    Some (PIR.Apply s' t')
   | _ => fun _ => None
   end.
 
-Lemma unfold_lamAbs TT ctx na bt b_ty a :
-  translate_term TT ctx (tLambda na bt) (b_ty, a) = 
-  match ExAst.decompose_arr b_ty with
-  | ([], _) => None
-  | (ty :: _, _) =>
-    ty' <- get_type TT ty ;;
-    let na' := get_name na in (* get fresh name from context *)
-    bpt <- (translate_term TT (vass (nNamed (s_to_bs na')) :: ctx) bt a) ;;
-    Some (LamAbs na' ty' bpt)
+Lemma unfold_lamAbs TT ctx x t ty t_ty :
+  translate_term TT ctx (tLambda (nNamed x) t) (ty, t_ty) = 
+  match ty with
+  | TArr a _ =>
+    a' <- translate_ty TT a ;;
+    t' <- translate_term TT (vass (nNamed (s_to_bs x)) :: ctx) t t_ty ;;
+    Some (LamAbs x a' t')
+  | _ => None
   end.
 Proof.
   auto.
 Qed.
 
-Lemma unfold_app TT ctx t1 t2 b_ty ty1 ty2 pt1 pt2 : 
-  translate_term TT ctx t1 ty1 = Some pt1 ->
-  translate_term TT ctx t2 ty2 = Some pt2 ->
-  translate_term TT ctx (tApp t1 t2) (b_ty, (ty1, ty2)) = Some (PIR.Apply pt1 pt2).
+Lemma unfold_app TT ctx s t s_ty t_ty res_ty s' t' : 
+  translate_term TT ctx s s_ty = Some s' ->
+  translate_term TT ctx t t_ty = Some t' ->
+  translate_term TT ctx (tApp s t) (res_ty, (s_ty, t_ty)) = Some (PIR.Apply s' t').
 Proof.
   intros. simpl. now rewrite H, H0.
 Qed.
