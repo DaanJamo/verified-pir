@@ -85,6 +85,7 @@ Inductive DefaultFun :=
   | EqualsInteger
   | LessThanInteger
   | LessThanEqualsInteger
+  | IfThenElse
 .
 
 Definition name := string.
@@ -153,7 +154,7 @@ Module PlutusNotations.
 
   (* Builtin notations *)
   Notation "(+)" := (Builtin AddInteger) (in custom plutus_term).
-  (* Notation "'ifthenelse'" := (Builtin IfThenElse). *)
+  Notation "'ifthenelse'" := (Builtin IfThenElse).
   Notation "t1 '==' t2" := (<{ {Builtin EqualsInteger} ⋅ t1 ⋅ t2 }>)
     (in custom plutus_term at level 50, no associativity).
   Notation "t1 '+' t2" := (<{ {Builtin AddInteger} ⋅ t1 ⋅ t2 }>)

@@ -143,6 +143,7 @@ Definition show_DefaultFun (df : DefaultFun) : string :=
   | EqualsInteger => "equalsInteger"
   | LessThanInteger => "lessThanInteger"
   | LessThanEqualsInteger => "lessThanEqualsInteger"
+  | IfThenElse => "ifThenElse"
   (* | _ => "UnknownDefaultFunction" *)
   end
 .
