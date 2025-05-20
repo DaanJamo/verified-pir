@@ -2,7 +2,6 @@ From MetaCoq.Erasure.Typed Require Import Utils.
 From MetaCoq.Erasure.Typed Require Import ExAst.
 From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
-From MetaCoq.Erasure.Typed Require Import Extraction.
 From MetaCoq.Erasure Require Import EAst EAstUtils.
 From MetaCoq.Utils Require Import MCList MCString MCPrelude utils.
 
@@ -114,8 +113,6 @@ Inductive translatesTypeTo : box_type -> PIR.ty -> Prop :=
       lookup TT (string_of_kername kn) = Some ty' ->
       translatesTypeTo (TConst kn) ty'.
 
-Print box_type.
-Print annots.
 Inductive translatesTo (ctx : list bs) : forall (t : term),
   annots box_type t -> PIR.term -> Prop :=
   | tlt_tt : forall ann, translatesTo ctx tBox ann (Constant (ValueOf DefaultUniUnit tt))

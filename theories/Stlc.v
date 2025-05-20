@@ -287,7 +287,7 @@ Proof with (eauto using BigStepPIR.eval).
       * rewrite <- eq_b...
     + inversion tl_t. simpl...
     + inversion tl_t. simpl...
-    - intros ta' tl_ta. apply tl_app in tl_ta.
+  - intros ta' tl_ta. apply tl_app in tl_ta.
     destruct tl_ta as [t1' [t2' [tl_t1 [tl_t2 tl_a]]]].
     destruct (IHev1 t1' tl_t1) as [lv' [k1 [tl_l step1]]].
     destruct (IHev2 t2' tl_t2) as [v2' [k2 [tl_v2 step2]]].
@@ -395,3 +395,204 @@ Proof with (eauto using BigStepPIR.eval).
     exists v'. exists (k1 + k2 + 1 + k3). split. apply tlt_v.
     eapply E_Apply. eauto. rewrite <- H3 in ev_l. apply ev_l. apply ev_v2. apply ev_v.
 Qed.
+
+Section nameless.
+
+Import Strings.String.
+
+Local Open Scope string_scope.
+
+Fixpoint snoc {X:Type} (l:list X) (v:X) : (list X) :=
+  match l with
+  | nil      => cons v (nil)
+  | cons h t => cons h (snoc t v)
+  end.
+
+Fixpoint FV (t : tm) : list string :=
+  match t with
+  | tm_var x => [x]
+  | tm_abs x _ b => remove string_dec x (FV b)
+  | tm_app t1 t2 => FV t1 ++ FV t2
+  | tm_true  => nil
+  | tm_false => nil
+  | tm_oops  => nil end.
+
+Inductive ntm : Type :=
+  | ntm_rel   : nat -> ntm
+  | ntm_app   : ntm -> ntm -> ntm
+  | ntm_abs   : string -> ty -> ntm -> ntm
+  | ntm_true  : ntm
+  | ntm_false : ntm
+  | ntm_oops  : ntm.
+
+Fixpoint lift n k nt : ntm :=
+  match nt with
+  | ntm_rel i => if Nat.leb k i then ntm_rel (n + i) else ntm_rel i
+  | ntm_app t1 t2 => ntm_app (lift n k t1) (lift n k t2)
+  | ntm_abs x T b => ntm_abs x T (lift n (S k) b)
+  | ntm_true => ntm_true
+  | ntm_false => ntm_false
+  | ntm_oops => ntm_oops end.
+
+Notation lift0 n := (lift n 0).
+Definition up := lift 1 0.
+
+Fixpoint remove_names (Γ : list string) (t : tm) : ntm :=
+  match t with
+  | tm_var x => match find_index (eqb x) Γ with 
+                | Some n => ntm_rel n 
+                | None => ntm_oops
+                end
+  | tm_abs x ty b => ntm_abs x ty (remove_names (x :: Γ) b)
+  | tm_app t1 t2 => ntm_app (remove_names Γ t1) (remove_names Γ t2)
+  | tm_true => ntm_true
+  | tm_false => ntm_false
+  | tm_oops => ntm_oops end.
+
+Fixpoint closedn k nt : bool :=
+  match nt with
+  | ntm_rel i => Nat.ltb i k 
+  | ntm_app t1 t2 => closedn k t1 && closedn k t2
+  | ntm_abs x T b => closedn (S k) b
+  | ntm_oops => false
+  | _ => true end.
+
+Notation closed t := (closedn 0 t).
+
+(* closed single substitution *)
+
+Reserved Notation "'[' k ':->' s ']' t" (in custom stlc_tm at level 5, k global, s custom stlc_tm,
+      t custom stlc_tm at next level, right associativity).
+
+Fixpoint csubst k s t : ntm :=
+  match t with
+  | ntm_rel n => if (k =? n)%nat then s else ntm_rel n
+  | ntm_app t1 t2 => ntm_app (csubst k s t1) (csubst k s t2)
+  | ntm_abs x T b => ntm_abs x T (csubst (S k) s b)
+  | ntm_true => ntm_true
+  | ntm_false => ntm_false
+  | ntm_oops => ntm_oops end
+
+where "'[' k ':->' s ']' t" := (csubst k s t) (in custom stlc_tm).
+
+Inductive evalNamed : ntm -> ntm -> Prop :=
+  | EN_Abs : forall x T b,
+      evalNamed (ntm_abs x T b) (ntm_abs x T b)
+  | EN_App : forall t1 t2 x ty b v2 v,
+      evalNamed t1 (ntm_abs x ty b) ->
+      evalNamed t2 v2 ->
+      evalNamed (csubst 0 v2 b) v ->
+      evalNamed (ntm_app t1 t2) v
+  | EN_True  : evalNamed ntm_true ntm_true
+  | EN_False : evalNamed ntm_false ntm_false.
+
+Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
+  | ntl_rel : forall n x, nth_error Γ n = Some x -> translatesToNamed Γ (ntm_rel n) (Var x)
+  | ntl_abs : forall x ty ty' b b', (* shadowing with x *)
+      translatesTypeTo ty ty' ->
+      translatesToNamed (x :: Γ) b b' ->
+      translatesToNamed Γ (ntm_abs x ty b) (LamAbs x ty' b')
+  | ntl_app : forall t1 t2 t1' t2',
+      translatesToNamed Γ t1 t1' ->
+      translatesToNamed Γ t2 t2' ->
+      translatesToNamed Γ (ntm_app t1 t2) (Apply t1' t2')
+  | ntl_true : translatesToNamed Γ ntm_true (Constant (ValueOf DefaultUniBool true))
+  | ntl_false : translatesToNamed Γ ntm_false (Constant (ValueOf DefaultUniBool false)).
+
+Lemma weaken_ctx : forall Γ n x v b b',
+  ~ (In x Γ) ->
+  translatesToNamed (x :: Γ) (csubst (S n) v b) b' ->
+  translatesToNamed Γ b b'.
+Proof.
+  intros Γ n x v b. induction b;
+  intros b' notInCtx ntl_b; inversion ntl_b.
+  - subst. admit.
+  - admit.
+  - specialize (IHb1 t1' notInCtx H1).
+    specialize (IHb2 t2' notInCtx H3).
+    apply ntl_app. apply IHb1. apply IHb2.
+  - subst. admit.
+  - apply ntl_true.
+  - apply ntl_false.
+Admitted.
+
+(* nth_error_Some_length, Nat.ltb_lt *)
+Search (_ "?=" S _) inside Nat.
+Search hyp:(?x = S ?y) inside Nat.
+Search "compare_refl" inside Nat.
+Search "nth_error" inside Nat.
+Search "NoDup" "nth_error".
+Search "Some" (_ <> _).
+Search "nth_error_Some_length".
+Lemma csubst_correct : forall Γ k x v b v' b',
+  NoDup Γ ->
+  nth_error Γ k = Some x ->
+  translatesToNamed Γ v v' ->
+  translatesToNamed Γ b b' ->
+  translatesToNamed Γ <{[k :-> v] b}> (BigStepPIR.subst x v' b').
+Proof.
+  intros Γ n x v b. induction b;
+  intros v' b' nodup inCtx ntl_v ntl_b;
+  inversion ntl_b.
+  - (* rel *) simpl. destruct (n =? n0)%nat eqn:En.
+    + apply Nat.eqb_eq in En. rewrite En in inCtx.
+      rewrite inCtx in H0. inversion H0. rewrite eqb_refl. 
+      apply ntl_v.
+    + subst. destruct (x =? x0) eqn:Ex.
+      * apply eqb_eq in Ex. rewrite <- Ex in H0.
+        rewrite <- H0 in inCtx.
+        rewrite NoDup_nth_error in nodup.
+        symmetry in inCtx.
+        apply nth_error_Some_length in H0.
+        specialize (nodup n0 n H0 inCtx).
+        apply Nat.eqb_neq in En. symmetry in nodup.
+        contradiction.
+      * apply ntl_b.
+  - specialize (IHb1 v' t1' nodup inCtx ntl_v H1).
+    specialize (IHb2 v' t2' nodup inCtx ntl_v H3).
+    simpl. apply ntl_app.
+    apply IHb1. apply IHb2.
+  - subst. simpl. destruct (x =? s) eqn:Ex.
+    + (* bound *) apply ntl_abs. apply H3.
+      apply eqb_eq in Ex. (* can't happen *) admit.
+    + (* substitute body *) apply ntl_abs. apply H3.
+      specialize (IHb v' b'0 nodup inCtx ntl_v). admit.
+  - apply ntl_true.
+  - apply ntl_false.
+Admitted.
+
+Theorem translate_correct_named : forall Γ t v t',
+  evalNamed t v ->
+  translatesToNamed Γ t t' ->
+  exists v' k,
+    translatesToNamed Γ v v' /\
+    BigStepPIR.eval t' v' k.
+Proof with (eauto using BigStepPIR.eval).
+  intros Γ t v t' evn. revert t'; induction evn; 
+  intros t'' tln_t; inversion tln_t.
+  - exists t''. eexists. subst...
+  - subst.
+    destruct (IHevn1 t1' H1) as [v1' [k1 [tln_l ev_l]]].
+    destruct (IHevn2 t2' H3) as [v2' [k2 [tln_v2 ev_v2]]].
+    inversion tln_l. subst.
+    assert (Hs : translatesToNamed Γ (csubst 0 v2 b) (BigStepPIR.subst x0 v2' b')).
+    apply (csubst_correct Γ 0 x0 v2 b v2' b'). admit.
+    admit. apply tln_v2. admit. 
+    destruct (IHevn3 (BigStepPIR.subst x0 v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
+    exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
+    apply ev_l. apply ev_v2. apply ev_s.
+  - exists t''. eexists. subst...
+  - exists t''. eexists. subst...
+Admitted.
+
+(* Fixpoint restore_names (Γ : list string) (nt : ntm) : tm :=
+  match nt with
+  | ntm_rel n => match nth_error Γ n with Some x => tm_var x | None => tm_oops end
+  | ntm_app t1 t2 => tm_app (restore_names Γ t1) (restore_names Γ t2)
+  | ntm_abs T b => let x' := fresh_var Γ in tm_abs x' T (restore_names (x' :: Γ) b)
+  | ntm_true => tm_true
+  | ntm_false => tm_false
+  | ntm_oops => tm_oops end.
+*)
+
+End nameless.
