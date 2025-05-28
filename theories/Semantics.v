@@ -8,42 +8,30 @@ From VTL Require Import PIR BigStepPIR Translation.
 
 Existing Instance EWcbvEval.default_wcbv_flags.
 
-(* do we need context? *)
-Inductive InReflSubset (ctx : list bs) : EAst.term -> Prop :=
-  | RS_tBox : InReflSubset ctx tBox
+Inductive InReflSubset (Γ : list bs) : EAst.term -> Prop :=
+  | RS_tBox : InReflSubset Γ tBox
   | RS_tRel : forall n res,
-    nth_error ctx n = Some res ->
-    InReflSubset ctx (tRel n)
+    nth_error Γ n = Some res ->
+    InReflSubset Γ (tRel n)
   | RS_tLambda : forall na b,
-    InReflSubset ctx b ->
-    InReflSubset ctx (tLambda na b)
+    InReflSubset Γ b ->
+    InReflSubset Γ (tLambda na b)
 .
 
-Inductive InSubset (ctx : list bs) : EAst.term -> Prop :=
-  | S_tBox : InSubset ctx tBox
+Inductive InSubset (Γ : list bs) : EAst.term -> Prop :=
+  | S_tBox : InSubset Γ tBox
   | S_tRel : forall n res,
-    nth_error ctx n = Some res ->
-    InSubset ctx (tRel n)
+    nth_error Γ n = Some res ->
+    InSubset Γ (tRel n)
   | S_tLambda : forall x b,
-    InSubset (x :: ctx) b ->
-    InSubset ctx (tLambda (BasicAst.nNamed x) b)
-  | S_tApp : forall t1 t2,
-    InSubset ctx t1 ->
-    InSubset ctx t2 ->
-    InSubset ctx (tApp t1 t2)
+    InSubset (x :: Γ) b ->
+    InSubset Γ (tLambda (BasicAst.nNamed x) b)
+  | S_tApp : forall x b t2,
+    InSubset (x :: Γ) b ->
+    InSubset Γ (tLambda (BasicAst.nNamed x) b) ->
+    InSubset Γ t2 ->
+    InSubset Γ (tApp (tLambda (BasicAst.nNamed x) b) t2)
 .
-
-Lemma sub_ctx_ext : forall ctx x t,
-  InSubset ctx t ->
-  InSubset (x :: ctx) t.
-Proof.
-  intros ctx x t sub.
-  induction sub.
-  - constructor.
-  - simpl. admit.
-  - constructor. admit.
-  - simpl. constructor. apply IHsub1. apply IHsub2.
-Admitted.
 
 Import Coq.Strings.String.
 Local Open Scope string_scope.
@@ -54,128 +42,149 @@ Notation "pt '⇓ₚ' pv" :=
   (at level 50).
 
 Ltac solve_pir_eval := split; [(eexists ; eauto using eval) | constructor].
-Ltac tl_reflect H := apply translate_reflect in H.
+Ltac tl_reflect  Htl  := apply translate_reflect in Htl  as ?tlt.
+Ltac tlt_reflect Htlt := apply translate_reflect in Htlt as ?tl.
 
 Definition gal_id :=
   tLambda (BasicAst.nNamed "x"%bs) (tRel 0).
 
-Theorem id_correct_explicit : forall Σ ctx pir_id, 
+Theorem id_correct_explicit : forall Σ Γ pir_id, 
   let ann := (TArr (TConst <%% unit %%>) (TConst <%% unit %%>), (TConst <%% unit %%>)) in
   Σ e⊢ gal_id ⇓ gal_id ->
-  (translate_term remap_env ctx gal_id ann) = Some pir_id ->
+  (translate_term remap_env Γ gal_id ann) = Some pir_id ->
   pir_id ⇓ₚ pir_id.
 Proof with (eauto using eval).
-  intros Σ ctx pir_id ann ev tl.
+  intros Σ Γ pir_id ann ev tl.
   unfold gal_id in *. simpl in *.
   inversion tl. solve_pir_eval.
 Qed.
 
-Theorem id_correct_implicit : forall Σ ctx (ann : annots box_type gal_id) pir_id,
+Theorem id_correct_implicit : forall Σ Γ (ann : annots box_type gal_id) pir_id,
   Σ e⊢ gal_id ⇓ gal_id ->
-  (translate_term remap_env ctx gal_id ann) = Some pir_id ->
+  (translate_term remap_env Γ gal_id ann) = Some pir_id ->
   pir_id ⇓ₚ pir_id.
 Proof with (eauto using eval).
-  intros Σ ctx ann pir_id ev tl.
+  intros Σ Γ ann pir_id ev tl.
   tl_reflect tl.
-  inversion tl. solve_pir_eval.
+  inversion tlt. solve_pir_eval.
 Qed.
 
-(* contexts don't match in both branches! *)
-Lemma tl_app : forall ctx t1 t2 ann_t (t' : PIR.term),
-  translate_term remap_env ctx (tApp t1 t2) ann_t = Some t' ->
-  exists ann_t1 ann_t2 t1' t2',
-    translate_term remap_env ctx t1 ann_t1 = Some t1' /\
-    translate_term remap_env ctx t2 ann_t2 = Some t2' /\
-    Apply t1' t2' = t'.
-Proof.
-  intros ctx t1 t2 ann_t t' tl_a.
-  tl_reflect tl_a.
-  inversion tl_a.
-  exists ann_t1. exists ann_t2. exists t1'. exists t2'.
-  tl_reflect H1. tl_reflect H4. auto.
-Qed.
-  
-Theorem refl_tl_correct : forall Σ ctx gt (ann : annots box_type gt) pt,
+Theorem refl_tl_correct : forall Σ Γ gt (ann : annots box_type gt) pt,
   Σ e⊢ gt ⇓ gt ->
-  InReflSubset ctx gt ->
-  (translate_term remap_env ctx gt ann) = Some pt ->
+  InReflSubset Γ gt ->
+  (translate_term remap_env Γ gt ann) = Some pt ->
   pt ⇓ₚ pt.
 Proof with (eauto using eval).
-  intros Σ ctx gt ann pt ev rsub tl.
+  intros Σ Γ gt ann pt ev rsub tl.
   destruct rsub.
   - (* TBox *) inversion tl. solve_pir_eval.
   - (* tRel, either a translation error or ev is invalid *) 
     now inversion ev.
   - (* tLambda *) tl_reflect tl. 
-    inversion tl. solve_pir_eval.
+    inversion tlt. solve_pir_eval.
 Qed.
 
-Definition id_app := tApp
-  (tLambda (BasicAst.nNamed "x"%bs) (tRel 0)) (tBox).
-
-Print ELiftSubst.subst.
-Print csubst.
-Print annots.
-Print tLambda.
-
-Print gal_id.
-Eval cbv in csubst 
-  (tLambda (BasicAst.nNamed "y"%bs) (tRel 0))
-  0
-  gal_id.
-Eval cbv in (tLambda (BasicAst.nNamed "x"%bs (tLambda (BasicAst.nNamed "y"))))
-
-Print eval.
-Lemma tl_subst : forall ctx k x v b ann_v ann_b ann_t v' b',
-  (* closed  *)
-  (* nth_error ctx k = Some x -> *)
-  translatesTo remap_env ctx v ann_v v' ->
-  translatesTo remap_env ctx b ann_b b' ->
-  translatesTo remap_env ctx (csubst v k b) ann_t (BigStepPIR.subst x v' b').
-Proof.
-  intros ctx k x v b ann_v ann_b ann_t v' b'. revert ctx k ann_t b'.
-  induction b; intros ctx k' ann_t b' tlt_v tlt_b; inversion tlt_b.
-  - apply tlt_tt.
-  (* - destruct (k' =? n)%nat eqn:Enk.
-    rewrite Nat.eqb_eq in Enk. *)
-  - simpl in *. destruct (x =? (bs_to_s x0)).
-    + destruct (k' ?= n)%nat eqn:ekn.
-      * admit. (* ann_t must be ann_v, how to prove this *)
-      * admit.
-      * admit.
-    + destruct (k' ?= n)%nat eqn:ekn.
-      * admit.
-      * admit.
-      * subst. admit.
-  - destruct ann_t as [ty ann_sb].
-    simpl in *. destruct (x =? (bs_to_s x0)).
-    + admit.
-    + admit.
-  - simpl in *.
-    destruct ann_t as [t_ty [ann_st1 ann_st2]].
-    specialize (IHb1 ann_t1 ctx k' ann_st1 t1' tlt_v H1).
-    specialize (IHb2 ann_t2 ctx k' ann_st2 t2' tlt_v H4).
-    apply (tlt_app remap_env ctx). apply IHb1. apply IHb2.
+(* To be infered from lambda binders *)
+Lemma fresh_axiom : forall (Γ : list bs) x s,
+  ~ (In x Γ) ->
+  ~ (In x (s :: Γ)).
 Admitted.
 
-(* lemma for general and closed *)
-Theorem stlc_correct : forall Σ ctx 
+Lemma weaken_ctx : forall Γ x t ann t',
+  ~ (In x Γ) ->
+  InSubset Γ t ->
+  translate_term remap_env Γ t ann = Some t' ->
+  translate_term remap_env (Γ ++ [x]) t ann = Some t'.
+Proof.
+  intros Γ x t ann t'' nIn sub. revert t''.
+  induction sub; intros t' tl_t;
+  tl_reflect tl_t; inversion tlt.
+  - auto.
+  - simpl. apply nth_error_Some_length in H.
+    rewrite nth_error_app1, H2. auto. apply H.
+  - (* lambda case *) admit.
+  - inversion H1. 
+    apply (fresh_axiom Γ x x0) in nIn as nIn_ext.
+    tl_reflect H10. tl_reflect H1. tl_reflect H4.
+    specialize (IHsub1 ann_b nIn_ext b' tlt0).
+    specialize (IHsub2 ann_t1 nIn t1' tlt1).
+    specialize (IHsub3 ann_t2 nIn t2' tlt2).
+    simpl. (* rewrites under let-binders *) admit.
+Admitted.
+
+Lemma tl_closed : forall Γ t ann t',
+  InSubset Γ t ->
+  translate_term remap_env Γ t ann = Some t' ->
+    closedn #|Γ| t /\ 
+    closedUnder (map String.to_string Γ) t'.
+Proof.
+  intros Γ t ann t'' sub. revert t''. 
+  induction sub; intros t' tl_t; tl_reflect tl_t.
+  - inversion tlt. auto. 
+  - split.
+    + now apply nth_error_Some_length, Nat.ltb_lt in H.
+    + inversion tlt. simpl. apply nth_error_In in H2.
+      apply existsb_exists. exists (bs_to_s x). 
+      split.
+      * apply in_map. apply H2.
+      * now apply eqb_eq.
+  - inversion tlt. tl_reflect H4.
+    specialize (IHsub ann_b b' tlt0). simpl in IHsub.
+    simpl. apply IHsub.
+  - inversion tlt. inversion H1.
+    tl_reflect H10. tl_reflect H1. tl_reflect H4.
+    specialize (IHsub1 ann_b b' tlt0).
+    specialize (IHsub2 ann_t1 t1' tlt1).
+    specialize (IHsub3 ann_t2 t2' tlt2).
+    simpl. destruct IHsub1, IHsub2, IHsub3. 
+    auto.
+Qed.
+
+Lemma tl_subst : forall Γ k x v b ann_v ann_b ann_t v' b',
+  nth_error Γ k = Some x ->
+  translatesTo remap_env nil v ann_v v' ->
+  translatesTo remap_env (Γ ++ [x]) b ann_b b' ->
+  translatesTo remap_env Γ (csubst v k b) ann_t (BigStepPIR.subst (bs_to_s x) v' b').
+Proof.
+  intros Γ k x v b ann_v ann_b ann_t v' b'. revert Γ k ann_t b'.
+  induction b; intros Γ k' ann_t b' inCtx tlt_v tlt_b; inversion tlt_b.
+  - simpl. apply tlt_tt.
+  - simpl in *. admit.
+  - destruct ann_t as [ty ann_sb].
+    (* lambda case, annotations need to have the right form *)
+    admit.
+  - simpl in *. subst.
+    destruct ann_t as [t_ty [ann_st1 ann_st2]].
+    specialize (IHb1 ann_t1 Γ k' ann_st1 t1' inCtx tlt_v H1).
+    specialize (IHb2 ann_t2 Γ k' ann_st2 t2' inCtx tlt_v H4).
+    apply (tlt_app remap_env Γ). apply IHb1. apply IHb2.
+Admitted.
+
+Theorem stlc_correct : forall (Σ : global_env) Γ 
   t (ann_t : annots box_type t) t'
   v (ann_v : annots box_type v),
   [] e⊢ t ⇓ v ->
-  InSubset nil t ->
-  translatesTo remap_env ctx t ann_t t' ->
+  InSubset Γ t ->
+  translatesTo remap_env Γ t ann_t t' ->
   exists ann_v v' k,
-    translatesTo remap_env ctx v ann_v v' /\
+    translatesTo remap_env Γ v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ ctx t ann_t t' v ann_v ev. revert t'.
+  intros Σ Γ t ann_t t' v ann_v ev. revert t'.
   induction ev; intros t'' sub tlt_t; inversion sub.
-  - admit.
-  - inv tlt_t.
+  - subst. inversion ev1.
+  - (* apply, the sensible case which requires subst-lemma *) admit.
+  - (* mkApps case *) subst. admit.
+  - (* fix case *) subst. inversion ev1. subst. admit.
+  - inversion tlt_t. subst. inversion ev1.
+  - (* mkApps constr case *) inversion tlt_t. subst. inversion H6. subst.
     admit.
-  - admit.
-  - admit.
-  - Admitted.
+  - subst. inversion ev1. subst. simpl in i. discriminate.
+  - subst. inversion tlt_t. exists ann. exists t''.
+    subst. eexists. split. apply tlt_tt. apply E_Constant. eauto.
+  - subst. inversion i.
+  - subst. exists ann_t. exists t''. inversion tlt_t. 
+    subst. eexists. split. apply tlt_t. apply E_LamAbs. eauto.
+Admitted.
   
   

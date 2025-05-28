@@ -22,7 +22,6 @@ Local Coercion bytestring.String.to_string : bytestring.String.t >-> string.
 Definition remap_ty (kn : kername) (uni : PIR.DefaultUni) := 
   (bs_to_s (string_of_kername kn), PIR.Ty_Builtin uni).
 
-(* Look at integer and nat types in PIR *)
 Definition remap_env : env PIR.ty :=
   [
     remap_ty <%% Z    %%> (PIR.DefaultUniInteger);
@@ -33,16 +32,10 @@ Definition remap_env : env PIR.ty :=
 Definition remap_fun (kn : kername) (df : PIR.DefaultFun) :=
   (kn, PIR.Builtin df).
 
-
 Section translate.
 
 Context (TT : env PIR.ty).
 (* TODO: extend with context to get fresh variable names *)
-(* Definition get_name (na : name) : string :=
-  match na with
-  | nAnon => "a"
-  | nNamed nm => if nm =? "_" then "a" else nm
-  end. *)
 
 Definition translate_ty : box_type -> option PIR.ty :=
   fix go (ty : box_type) :=
@@ -56,8 +49,6 @@ Definition translate_ty : box_type -> option PIR.ty :=
   | _ => None
   end.
 
-(* proof that welltyped => some t *)
-(* use var approach of malf? *)
 Fixpoint translate_term (ctx : list bs) (t : term) 
                         {struct t} : annots box_type t -> option PIR.term :=
   match t return annots box_type t -> option PIR.term with
@@ -75,33 +66,12 @@ Fixpoint translate_term (ctx : list bs) (t : term)
         Some (LamAbs x a' t')
       | _ => None
       end
-  | tApp s t => fun '(_, (s_ty, t_ty)) => (* does not handle all arguments yet, eta expansion?*)
+  | tApp s t => fun '(_, (s_ty, t_ty)) =>
     s' <- translate_term ctx s s_ty ;;
     t' <- translate_term ctx t t_ty ;;
     Some (PIR.Apply s' t')
   | _ => fun _ => None
   end.
-
-Lemma unfold_lamAbs ctx x t ty t_ty :
-  translate_term ctx (tLambda (nNamed x) t) (ty, t_ty) = 
-  match ty with
-  | TArr a _ =>
-    a' <- translate_ty a ;;
-    t' <- translate_term (x :: ctx) t t_ty ;;
-    Some (LamAbs x a' t')
-  | _ => None
-  end.
-Proof.
-  auto.
-Qed.
-
-Lemma unfold_app ctx s t s_ty t_ty res_ty s' t' : 
-  translate_term ctx s s_ty = Some s' ->
-  translate_term ctx t t_ty = Some t' ->
-  translate_term ctx (tApp s t) (res_ty, (s_ty, t_ty)) = Some (PIR.Apply s' t').
-Proof.
-  intros. simpl. now rewrite H, H0.
-Qed.
 
 Inductive translatesTypeTo : box_type -> PIR.ty -> Prop :=
   | tlty_tt  : translatesTypeTo TBox (PIR.Ty_Builtin DefaultUniUnit)
@@ -197,4 +167,5 @@ Definition identity_EAst : term :=
 Definition ann_id :=
   (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
 
+Eval cbv in (identity_EAst, ann_id).
 Eval cbv in (translate_unsafe nil identity_EAst ann_id).

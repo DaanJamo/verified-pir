@@ -1,16 +1,16 @@
-From Coq Require Import Strings.String List.
+From Coq Require Import Strings.String List Nat.
 Import ListNotations.
 
-From VTL Require Import PIR BigStepPIR Env.
+From VTL Require Import PIR BigStepPIR.
 
 Module STLC.
 
+(* Named STLC from Software Foundations extended
+with a wrong term/type to test partial translation *)
 Inductive ty : Type :=
   | Ty_Bool  : ty
   | Ty_Arrow : ty -> ty -> ty
   | Ty_ERROR : ty.
-
-Definition context := env ty.
 
 Inductive tm : Type :=
   | tm_var   : string -> tm
@@ -19,7 +19,6 @@ Inductive tm : Type :=
   | tm_true  : tm
   | tm_false : tm
   | tm_oops  : tm.
-  (* | tm_if    : tm -> tm -> tm -> tm. *)
 
 Declare Scope stlc_scope.
 Delimit Scope stlc_scope with stlc.
@@ -29,7 +28,6 @@ Declare Custom Entry stlc_ty.
 Declare Custom Entry stlc_tm.
 
 Notation "x" := x (in custom stlc_ty at level 0, x global) : stlc_scope.
-
 Notation "<{{ x }}>" := x (x custom stlc_ty).
 
 Notation "( t )" := t (in custom stlc_ty at level 0, t custom stlc_ty) : stlc_scope.
@@ -38,12 +36,6 @@ Notation "ty1 -> ty2" := (Ty_Arrow ty1 ty2) (in custom stlc_ty at level 99, righ
 Notation "$( t )" := t (in custom stlc_ty at level 0, t constr) : stlc_scope.
 
 Notation "'Bool'" := Ty_Bool (in custom stlc_ty at level 0) : stlc_scope.
-(* Notation "'if' x 'then' y 'else' z" :=
-  (tm_if x y z) (in custom stlc_tm at level 200,
-                    x custom stlc_tm,
-                    y custom stlc_tm,
-                    z custom stlc_tm at level 200,
-                    left associativity). *)
 Notation "'true'"  := true (at level 1).
 Notation "'true'"  := tm_true (in custom stlc_tm at level 0).
 Notation "'false'" := false (at level 1).
@@ -64,12 +56,12 @@ Notation "\ x : t , y" :=
 Coercion tm_var : string >-> tm.
 Arguments tm_var _%_string.
 
-Definition x : string := "x".
+(* Definition x : string := "x".
 Definition y : string := "y".
 Definition z : string := "z".
 Hint Unfold x : core.
 Hint Unfold y : core.
-Hint Unfold z : core.
+Hint Unfold z : core. *)
 
 Inductive value : tm -> Prop :=
   | v_abs : forall x ty2 t1,
@@ -98,49 +90,9 @@ Fixpoint subst (x : string) (s : tm) (t : tm) : tm :=
       <{false}>
   | <{OOPS}> =>
       <{OOPS}>
-  (* | <{if t1 then t2 else t3}> =>
-      <{if [x:=s] t1 then [x:=s] t2 else [x:=s] t3}> *)
   end
 
 where "'[' x ':=' s ']' t" := (subst x s t) (in custom stlc_tm).
-
-Notation "x '|->' v ';' m " := ((x, v) :: m)
-  (in custom stlc_tm at level 0, x constr at level 0, v  custom stlc_ty, right associativity) : stlc_scope.
-
-Notation "x '|->' v " := ((x, v) :: nil)
-  (in custom stlc_tm at level 0, x constr at level 0, v custom stlc_ty) : stlc_scope.
-
-Notation "'empty'" := nil (in custom stlc_tm) : stlc_scope.
-
-Reserved Notation "<{ Γ '⊢' t '∈' ty }>"
-            (at level 0, Γ custom stlc_tm at level 200, t custom stlc_tm, ty custom stlc_ty).
-
-Inductive has_type : context -> tm -> ty -> Prop :=
-  | T_Var : forall Γ x ty,
-      lookup Γ x = Some ty ->
-      <{Γ ⊢ x ∈ ty }>
-  | T_Abs : forall Γ x ty1 ty2 t1,
-      <{ x |-> ty2 ; Γ ⊢ t1 ∈ ty1 }> ->
-      <{ Γ ⊢ \x:ty2, t1 ∈ ty2 -> ty1 }>
-  | T_App : forall ty1 ty2 Γ t1 t2,
-      <{ Γ ⊢ t1 ∈ ty2 -> ty1 }> ->
-      <{ Γ ⊢ t2 ∈ ty2 }> ->
-      <{ Γ ⊢ t1 t2 ∈ ty1 }>
-  | T_True : forall Γ,
-      <{ Γ ⊢ true ∈ Bool }>
-  | T_False : forall Γ,
-      <{ Γ ⊢ false ∈ Bool }>
-  (* | T_If : forall t1 t2 t3 ty1 Γ,
-       <{ Γ ⊢ t1 ∈ Bool }> ->
-       <{ Γ ⊢ t2 ∈ ty1 }> ->
-       <{ Γ ⊢ t3 ∈ ty1 }> ->
-       <{ Γ ⊢ if t1 then t2 else t3 ∈ ty1 }> *)
-
-where "<{ Γ '⊢' t '∈' ty }>" := (has_type Γ t ty) : stlc_scope.
-
-Hint Constructors has_type : core.
-
-Definition typable (t : tm) := exists ty, <{nil ⊢ t ∈ ty}>.
 
 Reserved Notation "s '==>' t" (at level 90, left associativity).
 
@@ -154,19 +106,13 @@ Inductive eval : tm -> tm -> Prop :=
     t2 ==> v2 ->
     <{[x := v2] b}> ==> v ->
     <{t1 t2}> ==> v
-  (* | E_If_True : forall b t1 t2 v1,
-      b ==> <{true}> ->
-      t1 ==> v1 ->
-      <{if b then t1 else t2}> ==> v1
-  | E_If_False : forall b t1 t2 v2,
-      b ==> <{false}> ->
-      t2 ==> v2 ->
-      <{if b then t1 else t2}> ==> v2 *)
 
 where "s '==>' t" := (eval s t).
 
 Hint Constructors eval : core.
 
+(* Simpler translation to experiment with the form of the main proof,
+first from a STLC with named variables to PIR which is also named *)
 From MetaCoq.Utils Require Import utils.
 Import MCMonadNotation.
 
@@ -177,7 +123,8 @@ Fixpoint translate_type ty : option PIR.ty :=
       ty1' <- translate_type ty1 ;;
       ty2' <- translate_type ty2 ;;
       Some (PIR.Ty_Fun ty1' ty2') 
-  | Ty_ERROR => None end.
+  | Ty_ERROR => None
+  end.
 
 Fixpoint translate tm : option term :=
   match tm with
@@ -186,16 +133,22 @@ Fixpoint translate tm : option term :=
     tm1' <- translate tm1 ;;
     tm2' <- translate tm2 ;;
     Some (Apply tm1' tm2')
-  | tm_abs x ty b => 
+  | tm_abs x ty b =>
     ty' <- translate_type ty ;; 
     b' <- translate b ;;
     Some (LamAbs x ty' b')
   | tm_true => Some (Constant (ValueOf DefaultUniBool true))
   | tm_false => Some (Constant (ValueOf DefaultUniBool false))
-  | tm_oops => None
-  (* | tm_if tm1 tm2 tm3 => Apply (Builtin IfThenElse) t1 *) end.
+  | tm_oops => None 
+  end.
 
 Ltac solve_pir_eval := split; [(eexists ; eauto using BigStepPIR.eval) | constructor].
+
+Lemma app_cons_comm : forall {A} Γ1 Γ2 (x : A),
+  (Γ1 ++ x :: Γ2) = (Γ1 ++ [x] ++ Γ2).
+Proof.
+  induction Γ1; auto.
+Qed.
 
 Lemma tl_lambda : forall x ty b t',
   translate <{\x : ty, b}> = Some t' ->
@@ -293,9 +246,9 @@ Proof with (eauto using BigStepPIR.eval).
     destruct (IHev2 t2' tl_t2) as [v2' [k2 [tl_v2 step2]]].
     apply tl_lambda in tl_l.
     destruct tl_l as [b' [ty' [tl_ty [tl_b eq_b]]]].
-    assert (Hs: translate <{ [x0 := v2] b }> = Some (BigStepPIR.subst x0 v2' b')).
-    apply (subst_same x0 v2 b v2' b' tl_v2 tl_b).
-    destruct (IHev3 (BigStepPIR.subst x0 v2' b') Hs) as [v' [k3 [tl_v step3]]].
+    assert (Hs: translate <{ [x := v2] b }> = Some (BigStepPIR.subst x v2' b')).
+    apply (subst_same x v2 b v2' b' tl_v2 tl_b).
+    destruct (IHev3 (BigStepPIR.subst x v2' b') Hs) as [v' [k3 [tl_v step3]]].
     exists v'. exists (k1 + k2 + 1 + k3). split. apply tl_v. subst.
     eapply E_Apply. eauto. apply step1. apply step2. apply step3.
 Qed.
@@ -386,36 +339,41 @@ Proof with (eauto using BigStepPIR.eval).
     destruct (IHev1 t1' H2) as [lv' [k1 [tlt_l ev_l]]].
     destruct (IHev2 t2' H4) as [v2' [k2 [tlt_v2 ev_v2]]].
     inversion tlt_l.
-    assert (Hs: translate <{ [x0 := v2] b }> = Some (BigStepPIR.subst x0 v2' b')).
+    assert (Hs: translate <{ [x := v2] b }> = Some (BigStepPIR.subst x v2' b')).
     apply translate_reflect in tlt_v2 as tl_v2.
     apply translate_reflect in H6 as tl_b.
-    apply (subst_same x0 v2 b v2' b' tl_v2 tl_b).
+    apply (subst_same x v2 b v2' b' tl_v2 tl_b).
     apply translate_reflect in Hs as tlt_s.
-    destruct (IHev3 (BigStepPIR.subst x0 v2' b') tlt_s) as [v' [k3 [tlt_v ev_v]]].
+    destruct (IHev3 (BigStepPIR.subst x v2' b') tlt_s) as [v' [k3 [tlt_v ev_v]]].
     exists v'. exists (k1 + k2 + 1 + k3). split. apply tlt_v.
     eapply E_Apply. eauto. rewrite <- H3 in ev_l. apply ev_l. apply ev_v2. apply ev_v.
 Qed.
 
+(* More difficult translation from a nameless STLC that uses De Bruijn
+indices and a context to PIR, similar to the main proof as λ□ is also nameless *)
 Section nameless.
 
-Import Strings.String.
-
+Import Strings.String Nat.
 Local Open Scope string_scope.
 
-Fixpoint snoc {X:Type} (l:list X) (v:X) : (list X) :=
-  match l with
-  | nil      => cons v (nil)
-  | cons h t => cons h (snoc t v)
+Definition fresh_name x (Γ : list string) :=
+  forall k, (nth_error Γ k <> Some x).
+
+Fixpoint gen_fresh_aux x (Γ : list string) n :=
+  match n with
+  | 0 => x
+  | S n' => let x' := x ++ "'" in 
+      if existsb (Strings.String.eqb x') Γ then gen_fresh_aux x' Γ n' else x'
   end.
 
-Fixpoint FV (t : tm) : list string :=
-  match t with
-  | tm_var x => [x]
-  | tm_abs x _ b => remove string_dec x (FV b)
-  | tm_app t1 t2 => FV t1 ++ FV t2
-  | tm_true  => nil
-  | tm_false => nil
-  | tm_oops  => nil end.
+Definition gen_fresh x (Γ : list string) :=
+  gen_fresh_aux x Γ #|Γ|.
+
+Lemma gen_fresh_fresh x (Γ : list string) :
+  ~ (In (gen_fresh x Γ) Γ).
+Proof.
+  unfold gen_fresh.
+Admitted.
 
 Inductive ntm : Type :=
   | ntm_rel   : nat -> ntm
@@ -437,18 +395,6 @@ Fixpoint lift n k nt : ntm :=
 Notation lift0 n := (lift n 0).
 Definition up := lift 1 0.
 
-Fixpoint remove_names (Γ : list string) (t : tm) : ntm :=
-  match t with
-  | tm_var x => match find_index (eqb x) Γ with 
-                | Some n => ntm_rel n 
-                | None => ntm_oops
-                end
-  | tm_abs x ty b => ntm_abs x ty (remove_names (x :: Γ) b)
-  | tm_app t1 t2 => ntm_app (remove_names Γ t1) (remove_names Γ t2)
-  | tm_true => ntm_true
-  | tm_false => ntm_false
-  | tm_oops => ntm_oops end.
-
 Fixpoint closedn k nt : bool :=
   match nt with
   | ntm_rel i => Nat.ltb i k 
@@ -458,8 +404,6 @@ Fixpoint closedn k nt : bool :=
   | _ => true end.
 
 Notation closed t := (closedn 0 t).
-
-(* closed single substitution *)
 
 Reserved Notation "'[' k ':->' s ']' t" (in custom stlc_tm at level 5, k global, s custom stlc_tm,
       t custom stlc_tm at next level, right associativity).
@@ -475,6 +419,18 @@ Fixpoint csubst k s t : ntm :=
 
 where "'[' k ':->' s ']' t" := (csubst k s t) (in custom stlc_tm).
 
+Lemma csubst_closed k v t : closedn k t -> csubst k v t = t.
+Proof.
+  revert k. induction t; intros k' Hcl; inversion Hcl.
+  - apply ltb_lt, lt_neq, neq_sym, eqb_neq in H0.
+    simpl. rewrite H0. reflexivity.
+  - apply andb_true_iff in H0 as [Hcl1 Hcl2]. simpl.
+    rewrite (IHt1 k' Hcl1), (IHt2 k' Hcl2). reflexivity.
+  - simpl. rewrite (IHt (S k') H0). reflexivity.
+  - reflexivity.
+  - reflexivity.
+Qed.
+
 Inductive evalNamed : ntm -> ntm -> Prop :=
   | EN_Abs : forall x T b,
       evalNamed (ntm_abs x T b) (ntm_abs x T b)
@@ -488,10 +444,10 @@ Inductive evalNamed : ntm -> ntm -> Prop :=
 
 Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
   | ntl_rel : forall n x, nth_error Γ n = Some x -> translatesToNamed Γ (ntm_rel n) (Var x)
-  | ntl_abs : forall x ty ty' b b', (* shadowing with x *)
+  | ntl_abs : forall x x' ty ty' b b',
       translatesTypeTo ty ty' ->
-      translatesToNamed (x :: Γ) b b' ->
-      translatesToNamed Γ (ntm_abs x ty b) (LamAbs x ty' b')
+      translatesToNamed (x' :: Γ) b b' ->
+      translatesToNamed Γ (ntm_abs x ty b) (LamAbs x' ty' b')
   | ntl_app : forall t1 t2 t1' t2',
       translatesToNamed Γ t1 t1' ->
       translatesToNamed Γ t2 t2' ->
@@ -499,64 +455,164 @@ Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
   | ntl_true : translatesToNamed Γ ntm_true (Constant (ValueOf DefaultUniBool true))
   | ntl_false : translatesToNamed Γ ntm_false (Constant (ValueOf DefaultUniBool false)).
 
-Lemma weaken_ctx : forall Γ n x v b b',
-  ~ (In x Γ) ->
-  translatesToNamed (x :: Γ) (csubst (S n) v b) b' ->
-  translatesToNamed Γ b b'.
+Lemma tl_closed : forall Γ t t',
+  translatesToNamed Γ t t' ->
+    closedn #|Γ| t /\
+    closedUnder Γ t'.
 Proof.
-  intros Γ n x v b. induction b;
-  intros b' notInCtx ntl_b; inversion ntl_b.
-  - subst. admit.
-  - admit.
-  - specialize (IHb1 t1' notInCtx H1).
-    specialize (IHb2 t2' notInCtx H3).
-    apply ntl_app. apply IHb1. apply IHb2.
-  - subst. admit.
-  - apply ntl_true.
-  - apply ntl_false.
+  intros Γ' t. revert Γ'; induction t; 
+  intros Γ t'' tlt_t; inversion tlt_t.
+  - split.
+    + now apply nth_error_Some_length, ltb_lt in H0.
+    + simpl. apply nth_error_In in H0.
+      apply existsb_exists. exists x. 
+      split. apply H0. now apply String.eqb_eq.
+  - simpl. destruct (IHt1 Γ t1' H1), (IHt2 Γ t2' H3). auto.
+  - destruct (IHt (x' :: Γ) b' H4). simpl. auto.
+  - auto.
+  - auto.
+Qed.
+
+(* To be infered from lambda binders *)
+Lemma fresh_axiom : forall (Γ : list string) x s,
+  ~ (In x Γ) ->
+  ~ (In x (s :: Γ)).
 Admitted.
 
-(* nth_error_Some_length, Nat.ltb_lt *)
-Search (_ "?=" S _) inside Nat.
-Search hyp:(?x = S ?y) inside Nat.
-Search "compare_refl" inside Nat.
-Search "nth_error" inside Nat.
-Search "NoDup" "nth_error".
-Search "Some" (_ <> _).
-Search "nth_error_Some_length".
+Lemma fresh_many_axiom : forall (Γ1 Γ2 : list string) x,
+  ~ (In x Γ2) ->
+  ~ (In x (Γ1 ++ Γ2)).
+Proof.
+  induction Γ1.
+  - auto.
+  - intros. 
+Admitted.
+
+Lemma tlt_NoDup : forall Γ i k (x x' : string),
+  i < k ->
+  translatesToNamed Γ (ntm_rel k) (Var x') ->
+  nth_error Γ i = Some x ->
+  x <> x'.
+Admitted.
+
+Lemma weaken_ctx : forall Γ x t t',
+  ~ (In x Γ) ->
+  translatesToNamed Γ t t' ->
+  translatesToNamed (Γ ++ [x]) t t'.
+Proof.
+  intros Γ' x' t. revert Γ' x'.
+  induction t; intros Γ x t' nIn tlt_t;
+  inversion tlt_t.
+  - apply ntl_rel. now apply (nth_error_app_left).
+  - specialize (IHt1 Γ x t1' nIn H1).
+    specialize (IHt2 Γ x t2' nIn H3).
+    apply ntl_app. apply IHt1. apply IHt2.
+  - subst. apply (fresh_axiom Γ x x') in nIn.
+    specialize (IHt (x' :: Γ) x b' nIn H4).
+    apply ntl_abs. apply H3. apply IHt.
+  - apply ntl_true.
+  - apply ntl_false.
+Qed.
+
+Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
+  (forall x, In x Γ2 -> ~ (In x Γ1)) ->
+  translatesToNamed Γ1 t t' ->
+  translatesToNamed (Γ1 ++ Γ2) t t'.
+Proof.
+  intros. generalize dependent Γ1.
+  induction Γ2; intros Γ1.
+  - now rewrite app_nil_r.
+  - intros nIn tlt_t. rewrite app_cons_comm.
+    eapply (weaken_ctx Γ1 a) in tlt_t.
+    specialize (IHΓ2 (Γ1 ++ [a])%list).
+    rewrite app_assoc. eapply IHΓ2. admit.
+    apply tlt_t. admit.
+Admitted.
+
+Lemma weaken_closedUnder : forall (Γ : list string) x t',
+  closedUnder Γ t' ->
+  closedUnder (Γ ++ [x]) t'.
+Proof.
+  intros Γ' x t'. revert Γ'. induction t'; intros Γ H.
+  - simpl in *. 
+    rewrite (existsb_app (fun v : string => v =? n) Γ [x]).
+    now rewrite H.
+  - simpl in *. apply (IHt' (b :: Γ) H).
+  - inversion H. apply andb_true_iff in H1 as [Ht1 Ht2].
+    specialize (IHt'1 Γ Ht1). specialize (IHt'2 Γ Ht2).
+    simpl. auto.
+  - auto.
+  - auto.
+  - discriminate.
+Qed.
+
+Lemma nth_error_outer_binder : forall {A} (Γ : list A) x,
+  nth_error (Γ ++ [x]) (List.length Γ) = Some x.
+Proof.
+  intros.
+  rewrite nth_error_app2, sub_diag.
+  auto. apply le_refl.
+Qed. 
+
+Lemma nth_error_not_bound : forall {A} (Γ : list A) x x' n,
+  List.length Γ <> n ->
+  nth_error (Γ ++ [x]) n = Some x' ->
+  n < List.length Γ.
+Proof.
+  intros.
+  apply nth_error_Some_length in H0.
+  rewrite app_length in H0. simpl in H0.
+  lia.
+Qed.
+
+Lemma tlt_n_length : forall Γ k t',
+  translatesToNamed Γ (ntm_rel k) t' ->
+  k < List.length Γ.
+Proof. 
+  intros Γ k t' tlt.
+  inversion tlt.
+  now apply nth_error_Some_length in H0.
+Qed.
+
 Lemma csubst_correct : forall Γ k x v b v' b',
-  NoDup Γ ->
-  nth_error Γ k = Some x ->
-  translatesToNamed Γ v v' ->
-  translatesToNamed Γ b b' ->
+  k = #|Γ| ->
+  translatesToNamed nil v v' ->
+  translatesToNamed (Γ ++ [x]) b b' ->
   translatesToNamed Γ <{[k :-> v] b}> (BigStepPIR.subst x v' b').
 Proof.
-  intros Γ n x v b. induction b;
-  intros v' b' nodup inCtx ntl_v ntl_b;
+  intros Γ k' x v b. revert Γ k'. induction b;
+  intros Γ k v' b' Hk ntl_v ntl_b;
   inversion ntl_b.
-  - (* rel *) simpl. destruct (n =? n0)%nat eqn:En.
-    + apply Nat.eqb_eq in En. rewrite En in inCtx.
-      rewrite inCtx in H0. inversion H0. rewrite eqb_refl. 
-      apply ntl_v.
+  - simpl. destruct (k =? n)%nat eqn:En.
+    + apply eqb_eq in En. subst. 
+      rewrite nth_error_outer_binder in H0.
+      inversion H0. rewrite String.eqb_refl.
+      apply (weaken_ctx_many nil Γ) in ntl_v.
+      apply ntl_v. auto.
     + subst. destruct (x =? x0) eqn:Ex.
-      * apply eqb_eq in Ex. rewrite <- Ex in H0.
-        rewrite <- H0 in inCtx.
-        rewrite NoDup_nth_error in nodup.
-        symmetry in inCtx.
-        apply nth_error_Some_length in H0.
-        specialize (nodup n0 n H0 inCtx).
-        apply Nat.eqb_neq in En. symmetry in nodup.
+      * apply String.eqb_eq in Ex. apply eqb_neq in En.
+        apply nth_error_not_bound in H0 as Hl. 2: apply En.
+        assert (Hcontra : x <> x0).
+        apply (tlt_NoDup (Γ ++ [x]) n #|Γ|). 
+        apply Hl. apply ntl_rel. rewrite Ex.
+        apply nth_error_outer_binder. rewrite H0. 
+        symmetry. f_equal. apply Ex.
         contradiction.
-      * apply ntl_b.
-  - specialize (IHb1 v' t1' nodup inCtx ntl_v H1).
-    specialize (IHb2 v' t2' nodup inCtx ntl_v H3).
-    simpl. apply ntl_app.
-    apply IHb1. apply IHb2.
-  - subst. simpl. destruct (x =? s) eqn:Ex.
-    + (* bound *) apply ntl_abs. apply H3.
-      apply eqb_eq in Ex. (* can't happen *) admit.
-    + (* substitute body *) apply ntl_abs. apply H3.
-      specialize (IHb v' b'0 nodup inCtx ntl_v). admit.
+      * apply eqb_neq in En.
+        assert (n < #|Γ|). apply (nth_error_not_bound Γ x x0).
+        apply En. apply H0. rewrite nth_error_app1 in H0.
+        apply ntl_rel. apply H0. apply H.
+  - specialize (IHb1 Γ k v' t1' Hk ntl_v H1).
+    specialize (IHb2 Γ k v' t2' Hk ntl_v H3).
+    simpl. apply ntl_app. apply IHb1. apply IHb2.
+  - assert (Hl : S k = List.length (x' :: Γ)). simpl. auto.
+    specialize (IHb (x' :: Γ) (S k) v' b'0 Hl ntl_v H4). simpl.
+    destruct (x =? x') eqn:Ex; apply ntl_abs; try apply H3.
+    + rewrite (BigStepPIR.subst_closed (x' :: Γ)) in IHb.
+      apply IHb.
+      apply tl_closed in H4 as [_ Hcl2].
+      admit.
+    + apply IHb.
   - apply ntl_true.
   - apply ntl_false.
 Admitted.
@@ -568,31 +624,21 @@ Theorem translate_correct_named : forall Γ t v t',
     translatesToNamed Γ v v' /\
     BigStepPIR.eval t' v' k.
 Proof with (eauto using BigStepPIR.eval).
-  intros Γ t v t' evn. revert t'; induction evn; 
-  intros t'' tln_t; inversion tln_t.
-  - exists t''. eexists. subst...
+  intros Γ' t v t'' evn. revert Γ' t''; induction evn; 
+  intros Γ t' tln_t; inversion tln_t.
+  - exists t'. eexists. subst...
   - subst.
-    destruct (IHevn1 t1' H1) as [v1' [k1 [tln_l ev_l]]].
-    destruct (IHevn2 t2' H3) as [v2' [k2 [tln_v2 ev_v2]]].
-    inversion tln_l. subst.
-    assert (Hs : translatesToNamed Γ (csubst 0 v2 b) (BigStepPIR.subst x0 v2' b')).
-    apply (csubst_correct Γ 0 x0 v2 b v2' b'). admit.
-    admit. apply tln_v2. admit. 
-    destruct (IHevn3 (BigStepPIR.subst x0 v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
+    destruct (IHevn1 Γ t1' H1) as [v1' [k1 [ntl_l ev_l]]].
+    destruct (IHevn2 Γ t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
+    inversion ntl_l. subst.
+    assert (Hs : translatesToNamed Γ (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
+    apply (csubst_correct Γ 0 x' v2 b v2' b'). 
+    admit. admit. admit. (* SETUP SUBST *)
+    destruct (IHevn3 Γ (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
     exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
     apply ev_l. apply ev_v2. apply ev_s.
-  - exists t''. eexists. subst...
-  - exists t''. eexists. subst...
+  - exists t'. eexists. subst...
+  - exists t'. eexists. subst...
 Admitted.
-
-(* Fixpoint restore_names (Γ : list string) (nt : ntm) : tm :=
-  match nt with
-  | ntm_rel n => match nth_error Γ n with Some x => tm_var x | None => tm_oops end
-  | ntm_app t1 t2 => tm_app (restore_names Γ t1) (restore_names Γ t2)
-  | ntm_abs T b => let x' := fresh_var Γ in tm_abs x' T (restore_names (x' :: Γ) b)
-  | ntm_true => tm_true
-  | ntm_false => tm_false
-  | ntm_oops => tm_oops end.
-*)
 
 End nameless.

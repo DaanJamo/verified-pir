@@ -4,7 +4,6 @@ Import ListNotations.
 
 Definition env (A : Type) := list (string * A).
 
-(** Lookup by variable name *)
 Fixpoint lookup {A} (ρ : env A) (key : string) : option A :=
   match ρ with
   | [] => None
@@ -12,6 +11,15 @@ Fixpoint lookup {A} (ρ : env A) (key : string) : option A :=
     if (eqb nm key)
     then Some a
     else lookup ρ' key
+  end.
+
+Fixpoint lookup_by_val {A} (eq : A -> A -> bool) (ρ : env A) (key : A) : option string :=
+  match ρ with
+  | [] => None
+  | (nm, a) :: ρ' =>
+    if (eq a key)
+    then Some nm
+    else lookup_by_val eq ρ' key
   end.
 
 Notation "ρ # '(' k ')'" := (lookup ρ k) (at level 65).

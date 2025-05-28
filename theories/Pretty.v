@@ -1,8 +1,8 @@
 From Coq Require Import String BinInt List.
 
-(* afaik Coq has no builtin string conversion methods
+(* afaik Rocq has no builtin string conversion methods
 for its primitive types so we import the ones from QuickChick *)
-(* but MetaCoq does! rewrite incoming *)
+(* but MetaRocq does for their own bytestring implementation *)
 From QuickChick Require Import Show.
 Import ShowFunctions.
 
@@ -261,5 +261,3 @@ Instance ShowTerm : Show term :=
 Definition print_as_program (t : term) :=
   sexp "program" ["1.1.0" ; show t]
 .
-
-(* Eval cbv in (print_as_program (LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x"))). *)

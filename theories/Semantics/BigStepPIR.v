@@ -36,6 +36,23 @@ Notation "'[' x ':=' s ']' t" := (subst x s t) (in custom plutus_term at level 2
 (** * Big-step operational semantics *)
 Reserved Notation "t '=[' j ']=>' v"(at level 40).
 
+Fixpoint closedUnder ctx t : bool :=
+  match t with
+  | Var x => existsb (fun v => v =? x) ctx
+  | Apply t1 t2 => closedUnder ctx t1 && closedUnder ctx t2
+  | LamAbs x T b => closedUnder (x :: ctx) b
+  | Constant _ => true
+  | Builtin _ => true
+  | _ => false end.
+
+Notation closed t := (closedUnder nil t).
+
+Lemma subst_closed : forall ctx t,
+    closedUnder ctx t = true ->
+    forall x s,
+      <{ [x := s] t }> = t.
+Proof. Admitted.
+
 Inductive eval : term -> term -> nat -> Prop :=
   | E_LamAbs : forall j x T t,
       j = 0 ->

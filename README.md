@@ -1,2 +1,3 @@
 # verified-pir
- The first step in a verified extraction procedure from Gallina to Plutus Core using Concert and pir-pretty-print
+ A project looking into a verified extraction procedure from Gallina to Plutus Core,
+ by setting up a verified translation from λ□ to PIR.
