@@ -10,6 +10,8 @@ Import ListNotations.
 Import Coq.Strings.String.
 Local Open Scope string_scope.
 
+Require Import FunInd.
+
 Function subst (x : string) (s : term) (t : term) {struct t} : term :=
   match t with
   | Var y =>
@@ -81,9 +83,6 @@ Inductive eval : term -> term -> nat -> Prop :=
   (** Builtins: partial application *)
 
 where "t '=[' j ']=>' v" := (eval t v j).
-
-Definition terminates t := exists v j, t =[ j ]=> v.
-Notation "t '⇓'" := (terminates t) (at level 101).
 
 Inductive value : term -> Prop :=
   | V_LamAbs : forall x T t0,

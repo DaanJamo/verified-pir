@@ -12,5 +12,6 @@
     "**/Thumbs.db": true,
     "**/CVS": true
   },
-  "coq-lsp.check_only_on_request": true
+  "coq-lsp.check_only_on_request": false,
+  "coq-lsp.path": "/nix/store/f6inyj931nnf7qj9fynvfq9a0zc7jw34-coq-lsp-0.2.2+8.20/bin/coq-lsp"
 }

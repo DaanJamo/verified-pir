@@ -37,13 +37,14 @@ Import Coq.Strings.String.
 Local Open Scope string_scope.
 Import MCMonadNotation.
 
-Notation "pt '⇓ₚ' pv" :=
-  (evaluatesTo pt pv)
+Notation "t' '⇓ₚ' pv" :=
+  (evaluatesTo t' pv)
   (at level 50).
 
 Ltac solve_pir_eval := split; [(eexists ; eauto using eval) | constructor].
 Ltac tl_reflect  Htl  := apply translate_reflect in Htl  as ?tlt.
 Ltac tlt_reflect Htlt := apply translate_reflect in Htlt as ?tl.
+Ltac invs H := inversion H; subst.
 
 Definition gal_id :=
   tLambda (BasicAst.nNamed "x"%bs) (tRel 0).
@@ -69,13 +70,13 @@ Proof with (eauto using eval).
   inversion tlt. solve_pir_eval.
 Qed.
 
-Theorem refl_tl_correct : forall Σ Γ gt (ann : annots box_type gt) pt,
-  Σ e⊢ gt ⇓ gt ->
-  InReflSubset Γ gt ->
-  (translate_term remap_env Γ gt ann) = Some pt ->
-  pt ⇓ₚ pt.
+Theorem refl_tl_correct : forall Σ Γ t (ann : annots box_type t) t',
+  Σ e⊢ t ⇓ t ->
+  InReflSubset Γ t ->
+  (translate_term remap_env Γ t ann) = Some t' ->
+  t' ⇓ₚ t'.
 Proof with (eauto using eval).
-  intros Σ Γ gt ann pt ev rsub tl.
+  intros Σ Γ t ann t' ev rsub tl.
   destruct rsub.
   - (* TBox *) inversion tl. solve_pir_eval.
   - (* tRel, either a translation error or ev is invalid *) 
@@ -83,6 +84,48 @@ Proof with (eauto using eval).
   - (* tLambda *) tl_reflect tl. 
     inversion tlt. solve_pir_eval.
 Qed.
+
+Lemma InSubsetShape : forall Γ t,
+  InSubset Γ t ->
+  match t with
+  | tBox => True
+  | tRel _ => True
+  | tLambda _ _=> True
+  | tApp f a => exists x b, 
+      f = tLambda (BasicAst.nNamed x) b /\
+      InSubset (x :: Γ) b /\
+      InSubset Γ f /\
+      InSubset Γ a
+  | _ => False
+  end.
+Proof.
+  intros. inversion H; try trivial.
+  - exists x. exists b. auto.
+Qed. 
+
+Import EAstUtils.
+Print decompose_app.
+(* Lemma mkApps : mkApps (~ subset t) -> ~ subset (mkApps) *)
+Lemma mkApps_not_in_subset : forall Γ f us,
+  #|us| > 2 ->
+  InSubset Γ (mkApps f us) ->
+  InSubset Γ f.
+Proof.
+  intros. induction us.
+  - inversion H.
+  - destruct us. inversion H. inversion H2.
+    + simpl in H0. Admitted.
+
+(* Lemma everything in global env is in subset*)
+Lemma val_in_sub : forall Σ Γ t v,
+  Σ e⊢ t ⇓ v ->
+  InSubset Γ t ->
+  InSubset Γ v.
+Proof.
+  intros Σ Γ t v ev sub. induction ev; subst; inversion sub.
+  - admit.
+  - admit.
+  - subst. specialize (IHev1 H2). inversion IHev1. unfold mkApps in H0. Admitted.
 
 (* To be infered from lambda binders *)
 Lemma fresh_axiom : forall (Γ : list bs) x s,
@@ -160,26 +203,32 @@ Proof.
     apply (tlt_app remap_env Γ). apply IHb1. apply IHb2.
 Admitted.
 
-Theorem stlc_correct : forall (Σ : global_env) Γ 
+Print EWcbvEval.eval.
+Theorem stlc_correct : forall Γ 
   t (ann_t : annots box_type t) t'
   v (ann_v : annots box_type v),
   [] e⊢ t ⇓ v ->
   InSubset Γ t ->
+  InSubset Γ v ->
   translatesTo remap_env Γ t ann_t t' ->
   exists ann_v v' k,
     translatesTo remap_env Γ v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ Γ t ann_t t' v ann_v ev. revert t'.
-  induction ev; intros t'' sub tlt_t; inversion sub.
+  intros Γ t ann_t t' v ann_v ev. revert t'.
+  induction ev; intros t'' sub_t sub_v tlt_t;
+  inversion sub_t.
   - subst. inversion ev1.
   - (* apply, the sensible case which requires subst-lemma *) admit.
-  - (* mkApps case *) subst. admit.
-  - (* fix case *) subst. inversion ev1. subst. admit.
-  - inversion tlt_t. subst. inversion ev1.
-  - (* mkApps constr case *) inversion tlt_t. subst. inversion H6. subst.
+  - (* mkApps case *) subst. 
+    specialize (val_in_sub [] Γ (tLambda (BasicAst.nNamed x) b) (mkApps (tFix mfix idx) argsv) ev1 H2). 
     admit.
-  - subst. inversion ev1. subst. simpl in i. discriminate.
+  - (* fix case *) inversion sub_v. admit.
+  - inversion tlt_t. subst. inversion ev1.
+  - (* mkApps constr case *) subst. inversion tlt_t. subst. inversion H6. subst.
+    admit.
+  - (* Atoms applied to values *) subst. inversion ev1. subst. simpl in i. discriminate.
+  (* Atoms *)
   - subst. inversion tlt_t. exists ann. exists t''.
     subst. eexists. split. apply tlt_tt. apply E_Constant. eauto.
   - subst. inversion i.

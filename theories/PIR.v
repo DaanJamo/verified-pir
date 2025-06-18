@@ -5,6 +5,7 @@ Require Import Coq.ZArith.BinInt.
 Require Import Coq.Bool.BoolEq.
 Require Import Ascii.
 Require Import Eqdep.
+Require Import FunInd.
 
 Set Implicit Arguments.
 
@@ -14,8 +15,6 @@ Import ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 
-(* Exports FunInd and used for tests later *)
-From QuickChick Require Import QuickChick.
 (* Restricted version of the AST from plutus-cert *)
 
 Inductive DefaultUni :=
@@ -57,7 +56,6 @@ Definition uniType_option (x : DefaultUni) : option Set :=
   end
 .
 Functional Scheme uniType_option_rect := Induction for uniType_option Sort Type.
-
 
 (** Coq interpretation of plutus built-in types of base kind. Used for constructing
 constants (See term.Constant). Types that are ill-kinded or do not have base kind are

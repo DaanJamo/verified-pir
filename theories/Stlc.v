@@ -356,9 +356,6 @@ Section nameless.
 Import Strings.String Nat.
 Local Open Scope string_scope.
 
-Definition fresh_name x (Γ : list string) :=
-  forall k, (nth_error Γ k <> Some x).
-
 Fixpoint gen_fresh_aux x (Γ : list string) n :=
   match n with
   | 0 => x
@@ -445,6 +442,7 @@ Inductive evalNamed : ntm -> ntm -> Prop :=
 Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
   | ntl_rel : forall n x, nth_error Γ n = Some x -> translatesToNamed Γ (ntm_rel n) (Var x)
   | ntl_abs : forall x x' ty ty' b b',
+      ~ In x' Γ ->
       translatesTypeTo ty ty' ->
       translatesToNamed (x' :: Γ) b b' ->
       translatesToNamed Γ (ntm_abs x ty b) (LamAbs x' ty' b')
@@ -468,65 +466,65 @@ Proof.
       apply existsb_exists. exists x. 
       split. apply H0. now apply String.eqb_eq.
   - simpl. destruct (IHt1 Γ t1' H1), (IHt2 Γ t2' H3). auto.
-  - destruct (IHt (x' :: Γ) b' H4). simpl. auto.
+  - destruct (IHt (x' :: Γ) b' H5). simpl. auto.
   - auto.
   - auto.
 Qed.
 
-(* To be infered from lambda binders *)
-Lemma fresh_axiom : forall (Γ : list string) x s,
-  ~ (In x Γ) ->
-  ~ (In x (s :: Γ)).
-Admitted.
-
-Lemma fresh_many_axiom : forall (Γ1 Γ2 : list string) x,
-  ~ (In x Γ2) ->
-  ~ (In x (Γ1 ++ Γ2)).
+Lemma not_in_cons_r : forall (x a : string) Γ,
+  x <> a /\ ~ (In x Γ) ->
+  ~ (In x (Γ ++ [a])).
 Proof.
-  induction Γ1.
-  - auto.
-  - intros. 
-Admitted.
-
-Lemma tlt_NoDup : forall Γ i k (x x' : string),
-  i < k ->
-  translatesToNamed Γ (ntm_rel k) (Var x') ->
-  nth_error Γ i = Some x ->
-  x <> x'.
-Admitted.
+  intros x a Γ [Hneq HnIn].
+  unfold not. intros Hin. rewrite in_app_iff in Hin.
+  destruct Hin.
+  - contradiction.
+  - simpl in H. destruct H.
+    + symmetry in H. contradiction.
+    + apply H.
+Qed.
 
 Lemma weaken_ctx : forall Γ x t t',
   ~ (In x Γ) ->
+  NoDup Γ ->
   translatesToNamed Γ t t' ->
   translatesToNamed (Γ ++ [x]) t t'.
 Proof.
   intros Γ' x' t. revert Γ' x'.
-  induction t; intros Γ x t' nIn tlt_t;
+  induction t; intros Γ x t' nIn nodup tlt_t;
   inversion tlt_t.
   - apply ntl_rel. now apply (nth_error_app_left).
-  - specialize (IHt1 Γ x t1' nIn H1).
-    specialize (IHt2 Γ x t2' nIn H3).
+  - specialize (IHt1 Γ x t1' nIn nodup H1).
+    specialize (IHt2 Γ x t2' nIn nodup H3).
     apply ntl_app. apply IHt1. apply IHt2.
-  - subst. apply (fresh_axiom Γ x x') in nIn.
-    specialize (IHt (x' :: Γ) x b' nIn H4).
-    apply ntl_abs. apply H3. apply IHt.
+  - (* I know x and x' are both in ctx but not if x <> x',
+    I need to prove ~ In x (x' :: Γ) *) specialize (IHt (x' :: Γ) x b').
+    admit.
   - apply ntl_true.
   - apply ntl_false.
-Qed.
+Admitted.
 
 Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
-  (forall x, In x Γ2 -> ~ (In x Γ1)) ->
+  (forall x, In x Γ2 -> ~ In x Γ1) ->
   translatesToNamed Γ1 t t' ->
   translatesToNamed (Γ1 ++ Γ2) t t'.
 Proof.
-  intros. generalize dependent Γ1.
-  induction Γ2; intros Γ1.
-  - now rewrite app_nil_r.
-  - intros nIn tlt_t. rewrite app_cons_comm.
-    eapply (weaken_ctx Γ1 a) in tlt_t.
-    specialize (IHΓ2 (Γ1 ++ [a])%list).
-    rewrite app_assoc. eapply IHΓ2. admit.
-    apply tlt_t. admit.
+  intros Γ1 Γ2 t. revert Γ1. induction t;
+  intros Γ1 t' nIn tlt_t; inversion tlt_t.
+  - apply ntl_rel. rewrite nth_error_app1.
+    apply H0. apply nth_error_Some_length in H0. apply H0.
+  - eapply ntl_app. 
+    apply (IHt1 Γ1 t1' nIn H1). 
+    apply (IHt2 Γ1 t2' nIn H3).
+  - subst. apply ntl_abs. admit. apply H4.
+    assert (forall x : string, In x Γ2 -> ~ In x (x' :: Γ1)).
+    {
+      intros. apply nIn in H.
+      admit.
+    }
+    apply (IHt (x' :: Γ1) b' H H5).
+  - apply ntl_true.
+  - apply ntl_false.
 Admitted.
 
 Lemma weaken_closedUnder : forall (Γ : list string) x t',
@@ -561,7 +559,7 @@ Lemma nth_error_not_bound : forall {A} (Γ : list A) x x' n,
 Proof.
   intros.
   apply nth_error_Some_length in H0.
-  rewrite app_length in H0. simpl in H0.
+  rewrite length_app in H0. simpl in H0.
   lia.
 Qed.
 
@@ -576,12 +574,13 @@ Qed.
 
 Lemma csubst_correct : forall Γ k x v b v' b',
   k = #|Γ| ->
+  ~ In x Γ ->
   translatesToNamed nil v v' ->
   translatesToNamed (Γ ++ [x]) b b' ->
   translatesToNamed Γ <{[k :-> v] b}> (BigStepPIR.subst x v' b').
 Proof.
   intros Γ k' x v b. revert Γ k'. induction b;
-  intros Γ k v' b' Hk ntl_v ntl_b;
+  intros Γ k v' b' Hk nIn ntl_v ntl_b;
   inversion ntl_b.
   - simpl. destruct (k =? n)%nat eqn:En.
     + apply eqb_eq in En. subst. 
@@ -592,53 +591,53 @@ Proof.
     + subst. destruct (x =? x0) eqn:Ex.
       * apply String.eqb_eq in Ex. apply eqb_neq in En.
         apply nth_error_not_bound in H0 as Hl. 2: apply En.
-        assert (Hcontra : x <> x0).
-        apply (tlt_NoDup (Γ ++ [x]) n #|Γ|). 
+        assert (Hcontra : x <> x0). admit.
+        (* apply (tlt_NoDup (Γ ++ [x]) n #|Γ|). 
         apply Hl. apply ntl_rel. rewrite Ex.
         apply nth_error_outer_binder. rewrite H0. 
-        symmetry. f_equal. apply Ex.
+        symmetry. f_equal. apply Ex. *)
         contradiction.
       * apply eqb_neq in En.
         assert (n < #|Γ|). apply (nth_error_not_bound Γ x x0).
         apply En. apply H0. rewrite nth_error_app1 in H0.
         apply ntl_rel. apply H0. apply H.
-  - specialize (IHb1 Γ k v' t1' Hk ntl_v H1).
-    specialize (IHb2 Γ k v' t2' Hk ntl_v H3).
+  - specialize (IHb1 Γ k v' t1' Hk nIn ntl_v H1).
+    specialize (IHb2 Γ k v' t2' Hk nIn ntl_v H3).
     simpl. apply ntl_app. apply IHb1. apply IHb2.
   - assert (Hl : S k = List.length (x' :: Γ)). simpl. auto.
-    specialize (IHb (x' :: Γ) (S k) v' b'0 Hl ntl_v H4). simpl.
-    destruct (x =? x') eqn:Ex; apply ntl_abs; try apply H3.
-    + rewrite (BigStepPIR.subst_closed (x' :: Γ)) in IHb.
-      apply IHb.
-      apply tl_closed in H4 as [_ Hcl2].
-      admit.
-    + apply IHb.
+    rewrite in_app_iff in H2. destruct (x =? x') eqn:Exb; destruct H2.
+    { apply String.eqb_eq in Exb. rewrite Exb. 
+      right. left. reflexivity.
+    }
+    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in Exb. split; assumption.
+    specialize (IHb (x' :: Γ) (S k) v' b'0 Hl H2 ntl_v H5). simpl.
+    admit.
   - apply ntl_true.
   - apply ntl_false.
 Admitted.
 
-Theorem translate_correct_named : forall Γ t v t',
+Theorem translate_correct_named : forall t v t',
   evalNamed t v ->
-  translatesToNamed Γ t t' ->
+  translatesToNamed [] t t' ->
   exists v' k,
-    translatesToNamed Γ v v' /\
+    translatesToNamed [] v v' /\
     BigStepPIR.eval t' v' k.
 Proof with (eauto using BigStepPIR.eval).
-  intros Γ' t v t'' evn. revert Γ' t''; induction evn; 
-  intros Γ t' tln_t; inversion tln_t.
+  intros t v t'' evn. revert t''; induction evn; 
+  intros t' tln_t; inversion tln_t.
   - exists t'. eexists. subst...
   - subst.
-    destruct (IHevn1 Γ t1' H1) as [v1' [k1 [ntl_l ev_l]]].
-    destruct (IHevn2 Γ t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
+    destruct (IHevn1 t1' H1) as [v1' [k1 [ntl_l ev_l]]].
+    destruct (IHevn2 t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
     inversion ntl_l. subst.
-    assert (Hs : translatesToNamed Γ (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
-    apply (csubst_correct Γ 0 x' v2 b v2' b'). 
-    admit. admit. admit. (* SETUP SUBST *)
-    destruct (IHevn3 Γ (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
+    assert (Hs : translatesToNamed [] (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
+    apply (csubst_correct [] 0 x' v2 b v2' b'). 
+    reflexivity. apply H4. assumption. simpl. apply H7.
+    destruct (IHevn3 (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
     exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
     apply ev_l. apply ev_v2. apply ev_s.
   - exists t'. eexists. subst...
   - exists t'. eexists. subst...
-Admitted.
+Qed.
 
 End nameless.
