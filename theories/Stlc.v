@@ -442,7 +442,7 @@ Inductive evalNamed : ntm -> ntm -> Prop :=
 Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
   | ntl_rel : forall n x, nth_error Γ n = Some x -> translatesToNamed Γ (ntm_rel n) (Var x)
   | ntl_abs : forall x x' ty ty' b b',
-      ~ In x' Γ ->
+      ~ In x' Γ (* or bound_vars *) ->
       translatesTypeTo ty ty' ->
       translatesToNamed (x' :: Γ) b b' ->
       translatesToNamed Γ (ntm_abs x ty b) (LamAbs x' ty' b')
@@ -484,28 +484,53 @@ Proof.
     + apply H.
 Qed.
 
+Fixpoint bound_vars t' : list string :=
+  match t' with
+  | LamAbs x ty b' => x :: bound_vars b'
+  | Apply t1' t2' => bound_vars t1' ++ bound_vars t2'
+  | _ => []
+  end.
+
+Lemma not_in_bound_vars_app : forall x t1' t2',
+  ~ In x (bound_vars (Apply t1' t2')) ->
+  ~ In x (bound_vars t1') /\ ~ In x (bound_vars t2').
+Proof.
+  intros x t1' t2' nIn. simpl in nIn. rewrite in_app_iff in nIn.
+  apply Decidable.not_or in nIn. assumption.
+Qed.
+
+Lemma not_in_bound_vars_abs : forall x x' ty' b',
+  ~ In x (bound_vars (LamAbs x' ty' b')) ->
+  x <> x' /\ ~ In x (bound_vars b').
+Proof.
+  intros x x' ty' b' nIn. simpl in nIn.
+  apply Decidable.not_or in nIn as [nIn1 nIn2].
+  auto.
+Qed.
+
 Lemma weaken_ctx : forall Γ x t t',
-  ~ (In x Γ) ->
-  NoDup Γ ->
+  ~ In x (bound_vars t') ->
   translatesToNamed Γ t t' ->
   translatesToNamed (Γ ++ [x]) t t'.
 Proof.
   intros Γ' x' t. revert Γ' x'.
-  induction t; intros Γ x t' nIn nodup tlt_t;
+  induction t; intros Γ x t' nIn tlt_t;
   inversion tlt_t.
   - apply ntl_rel. now apply (nth_error_app_left).
-  - specialize (IHt1 Γ x t1' nIn nodup H1).
-    specialize (IHt2 Γ x t2' nIn nodup H3).
+  - subst. apply not_in_bound_vars_app in nIn as [nIn1 nIn2].
+    specialize (IHt1 Γ x t1' nIn1 H1).
+    specialize (IHt2 Γ x t2' nIn2 H3).
     apply ntl_app. apply IHt1. apply IHt2.
-  - (* I know x and x' are both in ctx but not if x <> x',
-    I need to prove ~ In x (x' :: Γ) *) specialize (IHt (x' :: Γ) x b').
-    admit.
+  - subst. apply not_in_bound_vars_abs in nIn as [Hx Hinb].
+    specialize (IHt (x' :: Γ) x b' Hinb H5).
+    apply ntl_abs; try assumption. 
+    apply not_in_cons_r. auto.
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
 Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
-  (forall x, In x Γ2 -> ~ In x Γ1) ->
+  (forall x, In x Γ2 -> ~ In x (bound_vars t')) ->
   translatesToNamed Γ1 t t' ->
   translatesToNamed (Γ1 ++ Γ2) t t'.
 Proof.
@@ -513,19 +538,35 @@ Proof.
   intros Γ1 t' nIn tlt_t; inversion tlt_t.
   - apply ntl_rel. rewrite nth_error_app1.
     apply H0. apply nth_error_Some_length in H0. apply H0.
-  - eapply ntl_app. 
-    apply (IHt1 Γ1 t1' nIn H1). 
-    apply (IHt2 Γ1 t2' nIn H3).
-  - subst. apply ntl_abs. admit. apply H4.
-    assert (forall x : string, In x Γ2 -> ~ In x (x' :: Γ1)).
+  (* how to simplify? *)
+  - subst. apply ntl_app. 
+    apply IHt1; try assumption.
+    { intros x nIn1. apply nIn in nIn1.
+      apply not_in_bound_vars_app in nIn1 as [nIn1 _].
+      assumption. }
+    apply IHt2; try assumption.
+    { intros x nIn2. apply nIn in nIn2.
+      apply not_in_bound_vars_app in nIn2 as [_ nIn2].
+      assumption. }
+  - subst. apply ntl_abs.
+    assert (HnIn2 : ~ In x' Γ2).
+    { 
+      unfold not. intros Hin. apply nIn in Hin.
+      apply Decidable.not_or in Hin as [Hcontra _].
+      contradiction.
+    }
+    rewrite in_app_iff. unfold not. intros. 
+    destruct H; contradiction. assumption.
+    assert (HnInb : forall x : string, In x Γ2 -> ~ In x (bound_vars b')).
     {
       intros. apply nIn in H.
-      admit.
+      apply not_in_bound_vars_abs in H.
+      apply H.
     }
-    apply (IHt (x' :: Γ1) b' H H5).
+    apply (IHt (x' :: Γ1) b' HnInb H5).
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
 Lemma weaken_closedUnder : forall (Γ : list string) x t',
   closedUnder Γ t' ->
@@ -550,7 +591,7 @@ Proof.
   intros.
   rewrite nth_error_app2, sub_diag.
   auto. apply le_refl.
-Qed. 
+Qed.
 
 Lemma nth_error_not_bound : forall {A} (Γ : list A) x x' n,
   List.length Γ <> n ->
@@ -572,6 +613,26 @@ Proof.
   now apply nth_error_Some_length in H0.
 Qed.
 
+Lemma in_not_in : forall {A} (l : list A) (x x' : A),
+  In x l ->
+  ~ In x' l ->
+  x <> x'.
+Proof.
+  unfold not. intros.
+  subst. contradiction.
+Qed.
+
+Lemma tlt_NoDup : forall (Γ : list string) n x x',
+  ~ In x Γ ->
+  nth_error (Γ ++ [x]) n = Some x' ->
+  n < List.length Γ ->
+  x <> x'.
+Proof.
+  intros. rewrite nth_error_app1 in H0; [|assumption].
+  apply nth_error_In in H0. 
+  symmetry. apply (in_not_in Γ); assumption.
+Qed.
+
 Lemma csubst_correct : forall Γ k x v b v' b',
   k = #|Γ| ->
   ~ In x Γ ->
@@ -587,15 +648,13 @@ Proof.
       rewrite nth_error_outer_binder in H0.
       inversion H0. rewrite String.eqb_refl.
       apply (weaken_ctx_many nil Γ) in ntl_v.
-      apply ntl_v. auto.
+      apply ntl_v. (* forall, ~ In x1 (bound_vars v')*) admit.
     + subst. destruct (x =? x0) eqn:Ex.
       * apply String.eqb_eq in Ex. apply eqb_neq in En.
         apply nth_error_not_bound in H0 as Hl. 2: apply En.
-        assert (Hcontra : x <> x0). admit.
-        (* apply (tlt_NoDup (Γ ++ [x]) n #|Γ|). 
-        apply Hl. apply ntl_rel. rewrite Ex.
-        apply nth_error_outer_binder. rewrite H0. 
-        symmetry. f_equal. apply Ex. *)
+        assert (Hcontra : x <> x0).
+        apply (tlt_NoDup Γ n); assumption.
+        apply (weaken_ctx_many nil Γ) in ntl_v; [|auto].
         contradiction.
       * apply eqb_neq in En.
         assert (n < #|Γ|). apply (nth_error_not_bound Γ x x0).
@@ -605,13 +664,16 @@ Proof.
     specialize (IHb2 Γ k v' t2' Hk nIn ntl_v H3).
     simpl. apply ntl_app. apply IHb1. apply IHb2.
   - assert (Hl : S k = List.length (x' :: Γ)). simpl. auto.
-    rewrite in_app_iff in H2. destruct (x =? x') eqn:Exb; destruct H2.
-    { apply String.eqb_eq in Exb. rewrite Exb. 
-      right. left. reflexivity.
+    (* TODO: clean this up *)
+    simpl. destruct (x =? x') eqn:Exb.
+    { apply String.eqb_eq in Exb. rewrite in_app_iff in H2.
+      apply Decidable.not_or in H2 as [_ Hcontra]. simpl in Hcontra.
+      unfold not in Hcontra. destruct Hcontra. auto.
     }
-    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in Exb. split; assumption.
-    specialize (IHb (x' :: Γ) (S k) v' b'0 Hl H2 ntl_v H5). simpl.
-    admit.
+    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in Exb. 
+    auto. specialize (IHb (x' :: Γ) (S k) v' b'0 Hl H6 ntl_v H5).
+    apply ntl_abs. rewrite in_app_iff in H2. apply Decidable.not_or in H2 as [Hx' _].
+    apply Hx'. assumption. (* closedUnder *) admit.
   - apply ntl_true.
   - apply ntl_false.
 Admitted.

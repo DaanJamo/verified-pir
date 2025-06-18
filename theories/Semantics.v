@@ -26,11 +26,10 @@ Inductive InSubset (Γ : list bs) : EAst.term -> Prop :=
   | S_tLambda : forall x b,
     InSubset (x :: Γ) b ->
     InSubset Γ (tLambda (BasicAst.nNamed x) b)
-  | S_tApp : forall x b t2,
-    InSubset (x :: Γ) b ->
-    InSubset Γ (tLambda (BasicAst.nNamed x) b) ->
-    InSubset Γ t2 ->
-    InSubset Γ (tApp (tLambda (BasicAst.nNamed x) b) t2)
+  | S_tApp : forall f a,
+    InSubset Γ f ->
+    InSubset Γ a ->
+    InSubset Γ (tApp f a)
 .
 
 Import Coq.Strings.String.
@@ -85,36 +84,22 @@ Proof with (eauto using eval).
     inversion tlt. solve_pir_eval.
 Qed.
 
-Lemma InSubsetShape : forall Γ t,
-  InSubset Γ t ->
-  match t with
-  | tBox => True
-  | tRel _ => True
-  | tLambda _ _=> True
-  | tApp f a => exists x b, 
-      f = tLambda (BasicAst.nNamed x) b /\
-      InSubset (x :: Γ) b /\
-      InSubset Γ f /\
-      InSubset Γ a
-  | _ => False
-  end.
-Proof.
-  intros. inversion H; try trivial.
-  - exists x. exists b. auto.
-Qed. 
-
-Import EAstUtils.
-Print decompose_app.
-(* Lemma mkApps : mkApps (~ subset t) -> ~ subset (mkApps) *)
-Lemma mkApps_not_in_subset : forall Γ f us,
-  #|us| > 2 ->
+(* keep f generic until IH *)
+Lemma mkApps_in_subset : forall Γ us f,
   InSubset Γ (mkApps f us) ->
-  InSubset Γ f.
+  InSubset Γ f /\ (forall a, In a us -> InSubset Γ a).
 Proof.
-  intros. induction us.
-  - inversion H.
-  - destruct us. inversion H. inversion H2.
-    + simpl in H0. Admitted.
+  intros Γ us. induction us.
+  - intros. simpl in *. auto.
+  - intros. simpl in H. specialize (IHus (tApp f a)).
+    apply IHus in H. destruct H as [Hf Hus]. 
+    inversion Hf. split.
+    + assumption.
+    + subst. intros a' Hin.
+      inversion Hin; subst. 
+      * assumption.
+      * apply Hus. assumption.
+Qed.
 
 (* Lemma everything in global env is in subset*)
 Lemma val_in_sub : forall Σ Γ t v,
@@ -122,10 +107,19 @@ Lemma val_in_sub : forall Σ Γ t v,
   InSubset Γ t ->
   InSubset Γ v.
 Proof.
-  intros Σ Γ t v ev sub. induction ev; subst; inversion sub.
-  - admit.
-  - admit.
-  - subst. specialize (IHev1 H2). inversion IHev1. unfold mkApps in H0. Admitted.
+  intros Σ Γ t v ev sub. induction ev; inversion sub; subst.
+  - constructor.
+  - specialize (IHev1 H1). specialize (IHev2 H2). (* closed? *) admit.
+  - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
+  - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
+  - apply IHev1 in H1. inversion H1.
+  - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
+  - constructor. apply IHev1. apply H1. apply IHev2. apply H2.
+  - constructor.
+  - assumption.
+  - assumption.
+  - assumption.
+Admitted.
 
 (* To be infered from lambda binders *)
 Lemma fresh_axiom : forall (Γ : list bs) x s,
@@ -218,14 +212,14 @@ Proof with (eauto using eval).
   intros Γ t ann_t t' v ann_v ev. revert t'.
   induction ev; intros t'' sub_t sub_v tlt_t;
   inversion sub_t.
-  - subst. inversion ev1.
+  - admit. (* nonsensible case right now *)
   - (* apply, the sensible case which requires subst-lemma *) admit.
   - (* mkApps case *) subst. 
     specialize (val_in_sub [] Γ (tLambda (BasicAst.nNamed x) b) (mkApps (tFix mfix idx) argsv) ev1 H2). 
     admit.
   - (* fix case *) inversion sub_v. admit.
   - inversion tlt_t. subst. inversion ev1.
-  - (* mkApps constr case *) subst. inversion tlt_t. subst. inversion H6. subst.
+  - (* mkApps constr case *) subst. inversion tlt_t. subst.
     admit.
   - (* Atoms applied to values *) subst. inversion ev1. subst. simpl in i. discriminate.
   (* Atoms *)
