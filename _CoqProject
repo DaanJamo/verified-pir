@@ -7,5 +7,6 @@ theories/Printer.v
 theories/Semantics.v
 theories/Semantics/BigStepPIR.v
 theories/Stlc.v
+theories/Subset.v
 theories/Translation.v
 theories/Utils.v
