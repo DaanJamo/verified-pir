@@ -1,9 +1,7 @@
 From Coq Require Import Strings.String List Nat.
 Import ListNotations.
 
-From VTL Require Import PIR BigStepPIR.
-
-Module STLC.
+From VTL Require Import PIR BigStepPIR Utils.
 
 (* Named STLC from Software Foundations extended
 with a wrong term/type to test partial translation *)
@@ -143,12 +141,6 @@ Fixpoint translate tm : option term :=
   end.
 
 Ltac solve_pir_eval := split; [(eexists ; eauto using BigStepPIR.eval) | constructor].
-
-Lemma app_cons_comm : forall {A} Γ1 Γ2 (x : A),
-  (Γ1 ++ x :: Γ2) = (Γ1 ++ [x] ++ Γ2).
-Proof.
-  induction Γ1; auto.
-Qed.
 
 Lemma tl_lambda : forall x ty b t',
   translate <{\x : ty, b}> = Some t' ->
@@ -471,19 +463,6 @@ Proof.
   - auto.
 Qed.
 
-Lemma not_in_cons_r : forall (x a : string) Γ,
-  x <> a /\ ~ (In x Γ) ->
-  ~ (In x (Γ ++ [a])).
-Proof.
-  intros x a Γ [Hneq HnIn].
-  unfold not. intros Hin. rewrite in_app_iff in Hin.
-  destruct Hin.
-  - contradiction.
-  - simpl in H. destruct H.
-    + symmetry in H. contradiction.
-    + apply H.
-Qed.
-
 Fixpoint bound_vars t' : list string :=
   match t' with
   | LamAbs x ty b' => x :: bound_vars b'
@@ -524,7 +503,7 @@ Proof.
   - subst. apply not_in_bound_vars_abs in nIn as [Hx Hinb].
     specialize (IHt (x' :: Γ) x b' Hinb H5).
     apply ntl_abs; try assumption. 
-    apply not_in_cons_r. auto.
+    apply not_in_snoc. auto.
   - apply ntl_true.
   - apply ntl_false.
 Qed.
@@ -585,25 +564,6 @@ Proof.
   - discriminate.
 Qed.
 
-Lemma nth_error_outer_binder : forall {A} (Γ : list A) x,
-  nth_error (Γ ++ [x]) (List.length Γ) = Some x.
-Proof.
-  intros.
-  rewrite nth_error_app2, sub_diag.
-  auto. apply le_refl.
-Qed.
-
-Lemma nth_error_not_bound : forall {A} (Γ : list A) x x' n,
-  List.length Γ <> n ->
-  nth_error (Γ ++ [x]) n = Some x' ->
-  n < List.length Γ.
-Proof.
-  intros.
-  apply nth_error_Some_length in H0.
-  rewrite length_app in H0. simpl in H0.
-  lia.
-Qed.
-
 Lemma tlt_n_length : forall Γ k t',
   translatesToNamed Γ (ntm_rel k) t' ->
   k < List.length Γ.
@@ -611,26 +571,6 @@ Proof.
   intros Γ k t' tlt.
   inversion tlt.
   now apply nth_error_Some_length in H0.
-Qed.
-
-Lemma in_not_in : forall {A} (l : list A) (x x' : A),
-  In x l ->
-  ~ In x' l ->
-  x <> x'.
-Proof.
-  unfold not. intros.
-  subst. contradiction.
-Qed.
-
-Lemma tlt_NoDup : forall (Γ : list string) n x x',
-  ~ In x Γ ->
-  nth_error (Γ ++ [x]) n = Some x' ->
-  n < List.length Γ ->
-  x <> x'.
-Proof.
-  intros. rewrite nth_error_app1 in H0; [|assumption].
-  apply nth_error_In in H0. 
-  symmetry. apply (in_not_in Γ); assumption.
 Qed.
 
 Lemma csubst_correct : forall Γ k x v b v' b',
@@ -645,7 +585,7 @@ Proof.
   inversion ntl_b.
   - simpl. destruct (k =? n)%nat eqn:En.
     + apply eqb_eq in En. subst. 
-      rewrite nth_error_outer_binder in H0.
+      rewrite nth_error_outer in H0.
       inversion H0. rewrite String.eqb_refl.
       apply (weaken_ctx_many nil Γ) in ntl_v.
       apply ntl_v. (* forall, ~ In x1 (bound_vars v')*) admit.
@@ -653,7 +593,7 @@ Proof.
       * apply String.eqb_eq in Ex. apply eqb_neq in En.
         apply nth_error_not_bound in H0 as Hl. 2: apply En.
         assert (Hcontra : x <> x0).
-        apply (tlt_NoDup Γ n); assumption.
+        apply (nth_error_not_snoc Γ n); assumption.
         apply (weaken_ctx_many nil Γ) in ntl_v; [|auto].
         contradiction.
       * apply eqb_neq in En.

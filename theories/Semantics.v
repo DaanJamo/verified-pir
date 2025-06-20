@@ -4,7 +4,7 @@ From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure Require Import EAst ECSubst ELiftSubst EWellformed.
 From MetaCoq.Utils Require Import utils.
 
-From VTL Require Import PIR BigStepPIR Translation.
+From VTL Require Import PIR BigStepPIR Translation Utils.
 
 Existing Instance EWcbvEval.default_wcbv_flags.
 
@@ -33,11 +33,10 @@ Inductive InSubset (Γ : list bs) : EAst.term -> Prop :=
 .
 
 Import Coq.Strings.String.
-Local Open Scope string_scope.
 Import MCMonadNotation.
 
-Notation "t' '⇓ₚ' pv" :=
-  (evaluatesTo t' pv)
+Notation "t' '⇓ₚ' v'" :=
+  (evaluatesTo t' v')
   (at level 50).
 
 Ltac solve_pir_eval := split; [(eexists ; eauto using eval) | constructor].
@@ -84,7 +83,6 @@ Proof with (eauto using eval).
     inversion tlt. solve_pir_eval.
 Qed.
 
-(* keep f generic until IH *)
 Lemma mkApps_in_subset : forall Γ us f,
   InSubset Γ (mkApps f us) ->
   InSubset Γ f /\ (forall a, In a us -> InSubset Γ a).
@@ -101,6 +99,65 @@ Proof.
       * apply Hus. assumption.
 Qed.
 
+Lemma subset_closed : forall Γ t,
+  InSubset Γ t ->
+  closedn #|Γ| t.
+Proof.
+  intros Γ t' sub. induction sub.
+  - reflexivity.
+  - now apply nth_error_Some_length, Nat.ltb_lt in H.
+  - auto.
+  - simpl. auto.
+Qed.
+
+Lemma subset_weaken : forall Γ x t,
+  InSubset Γ t ->
+  InSubset (Γ ++ [x]) t.
+Proof.
+  intros Γ x t sub. induction sub.
+  - constructor.
+  - apply (S_tRel (Γ ++ [x]) n res). 
+    apply nth_error_Some_length in H as Hl.
+    rewrite (nth_error_app1 Γ [x] Hl). assumption.
+  - constructor. apply IHsub.
+  - constructor; assumption.
+Qed.
+
+Lemma subset_weaken_many : forall Γ1 Γ2 t,
+  InSubset Γ1 t ->
+  InSubset (Γ1 ++ Γ2) t.
+Proof.
+  intros Γ1 Γ2 t sub. induction sub.
+  - constructor.
+  - apply (S_tRel (Γ ++ Γ2) n res). 
+    apply nth_error_Some_length in H as Hl.
+    rewrite (nth_error_app1 Γ Γ2 Hl). assumption.
+  - constructor. apply IHsub.
+  - constructor; assumption.
+Qed.
+
+Lemma csubst_in_sub : forall (Γ1 Γ2 : list bs) x v b,
+  InSubset [] v ->
+  InSubset (Γ1 ++ x :: Γ2) b ->
+  InSubset (Γ1 ++ Γ2) (csubst v #|Γ1| b).
+Proof.
+  intros Γ1 Γ2 x v b sub_v.
+  revert Γ1 x; induction b; 
+  intros Γ1 x sub_b; inversion sub_b.
+  remember (Γ1 ++ x :: Γ2) as Γ.
+  - simpl. constructor.
+  - simpl. subst. destruct (#|Γ1| ?= n) eqn:Ec.
+    + apply (subset_weaken_many [] (Γ1 ++ Γ2) v) in sub_v.
+      apply sub_v.
+    + eapply S_tRel. admit.
+    + eapply S_tRel. admit.
+  - simpl. constructor.
+    apply (IHb (x0 :: Γ1) x). apply H0.
+  - simpl. constructor. 
+    apply (IHb1 Γ1 x); assumption.
+    apply (IHb2 Γ1 x); assumption.
+Admitted.
+
 (* Lemma everything in global env is in subset*)
 Lemma val_in_sub : forall Σ Γ t v,
   Σ e⊢ t ⇓ v ->
@@ -109,7 +166,9 @@ Lemma val_in_sub : forall Σ Γ t v,
 Proof.
   intros Σ Γ t v ev sub. induction ev; inversion sub; subst.
   - constructor.
-  - specialize (IHev1 H1). specialize (IHev2 H2). (* closed? *) admit.
+  - specialize (IHev1 H1). invs IHev1.
+    specialize (IHev2 H2). apply IHev3.
+    apply subset_closed in H0 as b_closed. admit.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. inversion H1.
@@ -140,13 +199,7 @@ Proof.
   - simpl. apply nth_error_Some_length in H.
     rewrite nth_error_app1, H2. auto. apply H.
   - (* lambda case *) admit.
-  - inversion H1. 
-    apply (fresh_axiom Γ x x0) in nIn as nIn_ext.
-    tl_reflect H10. tl_reflect H1. tl_reflect H4.
-    specialize (IHsub1 ann_b nIn_ext b' tlt0).
-    specialize (IHsub2 ann_t1 nIn t1' tlt1).
-    specialize (IHsub3 ann_t2 nIn t2' tlt2).
-    simpl. (* rewrites under let-binders *) admit.
+  - (* app *) admit.
 Admitted.
 
 Lemma tl_closed : forall Γ t ann t',
@@ -168,12 +221,11 @@ Proof.
   - inversion tlt. tl_reflect H4.
     specialize (IHsub ann_b b' tlt0). simpl in IHsub.
     simpl. apply IHsub.
-  - inversion tlt. inversion H1.
-    tl_reflect H10. tl_reflect H1. tl_reflect H4.
-    specialize (IHsub1 ann_b b' tlt0).
-    specialize (IHsub2 ann_t1 t1' tlt1).
-    specialize (IHsub3 ann_t2 t2' tlt2).
-    simpl. destruct IHsub1, IHsub2, IHsub3. 
+  - inversion tlt.
+    tl_reflect H1. tl_reflect H4.
+    specialize (IHsub1 ann_t1 t1' tlt0).
+    specialize (IHsub2 ann_t2 t2' tlt1).
+    simpl. destruct IHsub1, IHsub2. 
     auto.
 Qed.
 
@@ -197,7 +249,6 @@ Proof.
     apply (tlt_app remap_env Γ). apply IHb1. apply IHb2.
 Admitted.
 
-Print EWcbvEval.eval.
 Theorem stlc_correct : forall Γ 
   t (ann_t : annots box_type t) t'
   v (ann_v : annots box_type v),
@@ -214,14 +265,12 @@ Proof with (eauto using eval).
   inversion sub_t.
   - admit. (* nonsensible case right now *)
   - (* apply, the sensible case which requires subst-lemma *) admit.
-  - (* mkApps case *) subst. 
-    specialize (val_in_sub [] Γ (tLambda (BasicAst.nNamed x) b) (mkApps (tFix mfix idx) argsv) ev1 H2). 
-    admit.
+  - (* mkApps case *) subst. invs tlt_t. admit.
   - (* fix case *) inversion sub_v. admit.
-  - inversion tlt_t. subst. inversion ev1.
+  - (* fix case *) inversion tlt_t. subst. admit.
   - (* mkApps constr case *) subst. inversion tlt_t. subst.
     admit.
-  - (* Atoms applied to values *) subst. inversion ev1. subst. simpl in i. discriminate.
+  - (* Atoms applied to values *) admit.
   (* Atoms *)
   - subst. inversion tlt_t. exists ann. exists t''.
     subst. eexists. split. apply tlt_tt. apply E_Constant. eauto.
@@ -229,5 +278,3 @@ Proof with (eauto using eval).
   - subst. exists ann_t. exists t''. inversion tlt_t. 
     subst. eexists. split. apply tlt_t. apply E_LamAbs. eauto.
 Admitted.
-  
-  
