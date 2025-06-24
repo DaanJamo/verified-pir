@@ -6,7 +6,7 @@ From VTL Require Import PIR BigStepPIR Translation Utils.
 
 Existing Instance EWcbvEval.default_wcbv_flags.
 
-Import Coq.Strings.String.
+From Coq Require Strings.String Lia.
 
 Inductive InSubset (Γ : list bs) : EAst.term -> Prop :=
   | S_tBox : InSubset Γ tBox
@@ -88,14 +88,20 @@ Proof.
   - simpl. subst. destruct (#|Γ1| ?= n) eqn:Ec.
     + apply (subset_weaken_many [] (Γ1 ++ Γ2) v) in sub_v.
       apply sub_v.
-    + eapply S_tRel. admit.
-    + eapply S_tRel. admit.
+    + apply Nat.compare_lt_iff in Ec.
+      apply nth_error_Some_length, length_pred_middle in H0.
+      apply nth_error_Some_value in H0. destruct H0.
+      apply (S_tRel (Γ1 ++ Γ2) (Nat.pred n) x0 H). assumption.
+    + apply Nat.compare_gt_iff in Ec.
+      apply nth_error_Some_length, length_middle in H0.
+      apply nth_error_Some_value in H0. destruct H0.
+      apply (S_tRel (Γ1 ++ Γ2) n x0 H). assumption.
   - simpl. constructor.
     apply (IHb (x0 :: Γ1) x). apply H0.
   - simpl. constructor. 
     apply (IHb1 Γ1 x); assumption.
     apply (IHb2 Γ1 x); assumption.
-Admitted.
+Qed.
 
 Lemma csubst_in_sub : forall (Γ : list bs) x v b,
   InSubset [] v ->
@@ -112,12 +118,11 @@ Lemma val_in_sub : forall Σ Γ t v,
   InSubset Γ t ->
   InSubset Γ v.
 Proof.
-  intros Σ Γ t v ev sub. induction ev; inversion sub; subst.
+  intros Σ Γ t v ev. revert Γ. induction ev; intros Γ sub; inversion sub; subst.
   - constructor.
-  - specialize (IHev1 H1). invs IHev1.
-    specialize (IHev2 H2). apply IHev3.
-    
-    apply subset_closed in H0 as b_closed. admit.
+  - specialize (IHev1 Γ H1). invs IHev1.
+    specialize (IHev2 Γ H2). apply IHev3.
+    admit.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. inversion H1.

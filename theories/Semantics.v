@@ -109,7 +109,9 @@ Proof with (eauto using eval).
   - admit. (* nonsensible case right now *)
   - (* apply, the sensible case which requires subst-lemma *) admit.
   - (* mkApps case *) subst. invs tlt_t. admit.
-  - (* fix case *) inversion sub_v. admit.
+  - (* fix case *) subst. inversion sub_v. 
+    apply mkApps_in_subset in H3 as [Hcontra _].
+    inversion Hcontra.
   - (* fix case *) inversion tlt_t. subst. admit.
   - (* mkApps constr case *) subst. inversion tlt_t. subst.
     admit.
