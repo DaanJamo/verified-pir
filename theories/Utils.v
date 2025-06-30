@@ -10,6 +10,15 @@ Proof.
   induction l1; auto.
 Qed.
 
+Lemma in_not_in : forall {A} (l : list A) (x x' : A),
+  In x l ->
+  ~ In x' l ->
+  x <> x'.
+Proof.
+  unfold not. intros.
+  subst. contradiction.
+Qed.
+
 Lemma length_pred_middle : forall {A} (l1 l2 : list A) x n,
   length l1 < n ->
   n < length (l1 ++ x :: l2) ->
@@ -28,15 +37,6 @@ Proof.
   intros. destruct l1.
   - inversion H.
   - rewrite length_app in *. lia.
-Qed.
-
-Lemma in_not_in : forall {A} (l : list A) (x x' : A),
-  In x l ->
-  ~ In x' l ->
-  x <> x'.
-Proof.
-  unfold not. intros.
-  subst. contradiction.
 Qed.
 
 Lemma not_in_snoc : forall {A} (l : list A) x a,
@@ -103,4 +103,31 @@ Proof.
     + simpl in *. apply IHl. 
       apply PeanoNat.lt_S_n in Hl. apply Hl.
 Qed.
-  
+
+Fixpoint find_index' (Γ : list string) x acc : option nat :=
+  match Γ with
+  | [] => None
+  | cons h tl => if eqb h x then Some acc else find_index' tl x (S acc)
+  end.
+Definition find_index x Γ := find_index' x Γ 0.
+        
+Lemma find_index_spec : forall l x n,
+  find_index l x = Some n ->
+  (forall k, nth_error l k = Some x -> k >= n).
+Proof.
+  intros l. unfold find_index. 
+  generalize 0 as acc. 
+  induction l as [|h l' IHl]; intros acc x n Hfi k Hnth.
+  - discriminate.
+  - simpl in Hfi.
+    destruct (eqb h x) eqn:Heq.
+    + apply eqb_eq in Heq. subst h.
+      inversion Hfi. subst n.
+      admit.
+    + destruct k.
+      * simpl in Hnth. inversion Hnth. 
+        apply eqb_neq in Heq. contradiction.
+      * rewrite nth_error_cons_succ in Hnth.
+        specialize (IHl (S acc) x n Hfi). 
+        apply IHl in Hnth. lia.
+Admitted.

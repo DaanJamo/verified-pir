@@ -463,53 +463,21 @@ Proof.
   - auto.
 Qed.
 
-Fixpoint bound_vars t' : list string :=
-  match t' with
-  | LamAbs x ty b' => x :: bound_vars b'
-  | Apply t1' t2' => bound_vars t1' ++ bound_vars t2'
-  | _ => []
-  end.
-
-Lemma not_in_bound_vars_app : forall x t1' t2',
-  ~ In x (bound_vars (Apply t1' t2')) ->
-  ~ In x (bound_vars t1') /\ ~ In x (bound_vars t2').
-Proof.
-  intros x t1' t2' nIn. simpl in nIn. rewrite in_app_iff in nIn.
-  apply Decidable.not_or in nIn. assumption.
-Qed.
-
-Lemma not_in_bound_vars_abs : forall x x' ty' b',
-  ~ In x (bound_vars (LamAbs x' ty' b')) ->
-  x <> x' /\ ~ In x (bound_vars b').
-Proof.
-  intros x x' ty' b' nIn. simpl in nIn.
-  apply Decidable.not_or in nIn as [nIn1 nIn2].
-  auto.
-Qed.
-
 Lemma weaken_ctx : forall Γ x t t',
-  ~ In x (bound_vars t') ->
   translatesToNamed Γ t t' ->
   translatesToNamed (Γ ++ [x]) t t'.
 Proof.
   intros Γ' x' t. revert Γ' x'.
-  induction t; intros Γ x t' nIn tlt_t;
+  induction t; intros Γ x t' tlt_t;
   inversion tlt_t.
   - apply ntl_rel. now apply (nth_error_app_left).
-  - subst. apply not_in_bound_vars_app in nIn as [nIn1 nIn2].
-    specialize (IHt1 Γ x t1' nIn1 H1).
-    specialize (IHt2 Γ x t2' nIn2 H3).
-    apply ntl_app. apply IHt1. apply IHt2.
-  - subst. apply not_in_bound_vars_abs in nIn as [Hx Hinb].
-    specialize (IHt (x' :: Γ) x b' Hinb H5).
-    apply ntl_abs; try assumption. 
-    apply not_in_snoc. auto.
+  - subst. admit.
+  - subst. 
   - apply ntl_true.
   - apply ntl_false.
 Qed.
 
 Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
-  (forall x, In x Γ2 -> ~ In x (bound_vars t')) ->
   translatesToNamed Γ1 t t' ->
   translatesToNamed (Γ1 ++ Γ2) t t'.
 Proof.
