@@ -432,9 +432,9 @@ Inductive evalNamed : ntm -> ntm -> Prop :=
   | EN_False : evalNamed ntm_false ntm_false.
 
 Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
-  | ntl_rel : forall n x, nth_error Γ n = Some x -> translatesToNamed Γ (ntm_rel n) (Var x)
+  | ntl_rel : forall n x, find_index Γ x = Some n -> translatesToNamed Γ (ntm_rel n) (Var x)
   | ntl_abs : forall x x' ty ty' b b',
-      ~ In x' Γ (* or bound_vars *) ->
+      ~ In x' Γ ->
       translatesTypeTo ty ty' ->
       translatesToNamed (x' :: Γ) b b' ->
       translatesToNamed Γ (ntm_abs x ty b) (LamAbs x' ty' b')
@@ -453,8 +453,8 @@ Proof.
   intros Γ' t. revert Γ'; induction t; 
   intros Γ t'' tlt_t; inversion tlt_t.
   - split.
-    + now apply nth_error_Some_length, ltb_lt in H0.
-    + simpl. apply nth_error_In in H0.
+    + now apply find_index_Some_length, ltb_lt in H0.
+    + simpl. apply find_index_In in H0.
       apply existsb_exists. exists x. 
       split. apply H0. now apply String.eqb_eq.
   - simpl. destruct (IHt1 Γ t1' H1), (IHt2 Γ t2' H3). auto.
@@ -470,50 +470,37 @@ Proof.
   intros Γ' x' t. revert Γ' x'.
   induction t; intros Γ x t' tlt_t;
   inversion tlt_t.
-  - apply ntl_rel. now apply (nth_error_app_left).
-  - subst. admit.
-  - subst. 
+  - apply ntl_rel. apply find_index_In in H0 as Hin. 
+    now rewrite (find_index_app1).
+  - subst. apply ntl_app. 
+    apply IHt1. apply H1.
+    apply IHt2. apply H3.
+  - subst. apply ntl_abs. apply not_in_snoc.
+    split. admit. apply H2.
+    apply H4. apply (IHt (x' :: Γ)). apply H5.
   - apply ntl_true.
   - apply ntl_false.
-Qed.
+Admitted.
 
 Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
   translatesToNamed Γ1 t t' ->
   translatesToNamed (Γ1 ++ Γ2) t t'.
 Proof.
   intros Γ1 Γ2 t. revert Γ1. induction t;
-  intros Γ1 t' nIn tlt_t; inversion tlt_t.
-  - apply ntl_rel. rewrite nth_error_app1.
-    apply H0. apply nth_error_Some_length in H0. apply H0.
-  (* how to simplify? *)
+  intros Γ1 t' tlt_t; inversion tlt_t.
+  - apply ntl_rel. rewrite find_index_app1.
+    apply H0. now apply find_index_In in H0.
   - subst. apply ntl_app. 
-    apply IHt1; try assumption.
-    { intros x nIn1. apply nIn in nIn1.
-      apply not_in_bound_vars_app in nIn1 as [nIn1 _].
-      assumption. }
-    apply IHt2; try assumption.
-    { intros x nIn2. apply nIn in nIn2.
-      apply not_in_bound_vars_app in nIn2 as [_ nIn2].
-      assumption. }
+    apply IHt1. apply H1.
+    apply IHt2. apply H3.
   - subst. apply ntl_abs.
-    assert (HnIn2 : ~ In x' Γ2).
-    { 
-      unfold not. intros Hin. apply nIn in Hin.
-      apply Decidable.not_or in Hin as [Hcontra _].
-      contradiction.
-    }
-    rewrite in_app_iff. unfold not. intros. 
-    destruct H; contradiction. assumption.
-    assert (HnInb : forall x : string, In x Γ2 -> ~ In x (bound_vars b')).
-    {
-      intros. apply nIn in H.
-      apply not_in_bound_vars_abs in H.
-      apply H.
-    }
-    apply (IHt (x' :: Γ1) b' HnInb H5).
+    assert (~ In x' Γ2). admit. (*MARK: admit*)
+    rewrite in_app_iff. unfold not. intros.
+    inversion H0; contradiction.
+    apply H4. now apply (IHt (x' :: Γ1)). 
   - apply ntl_true.
   - apply ntl_false.
-Qed.
+Admitted.
 
 Lemma weaken_closedUnder : forall (Γ : list string) x t',
   closedUnder Γ t' ->
@@ -538,7 +525,7 @@ Lemma tlt_n_length : forall Γ k t',
 Proof. 
   intros Γ k t' tlt.
   inversion tlt.
-  now apply nth_error_Some_length in H0.
+  now apply find_index_Some_length in H0.
 Qed.
 
 Lemma csubst_correct : forall Γ k x v b v' b',
@@ -551,40 +538,27 @@ Proof.
   intros Γ k' x v b. revert Γ k'. induction b;
   intros Γ k v' b' Hk nIn ntl_v ntl_b;
   inversion ntl_b.
-  - simpl. destruct (k =? n)%nat eqn:En.
-    + apply eqb_eq in En. subst. 
-      rewrite nth_error_outer in H0.
-      inversion H0. rewrite String.eqb_refl.
-      apply (weaken_ctx_many nil Γ) in ntl_v.
-      apply ntl_v. (* forall, ~ In x1 (bound_vars v')*) admit.
-    + subst. destruct (x =? x0) eqn:Ex.
-      * apply String.eqb_eq in Ex. apply eqb_neq in En.
-        apply nth_error_not_bound in H0 as Hl. 2: apply En.
-        assert (Hcontra : x <> x0).
-        apply (nth_error_not_snoc Γ n); assumption.
-        apply (weaken_ctx_many nil Γ) in ntl_v; [|auto].
-        contradiction.
-      * apply eqb_neq in En.
-        assert (n < #|Γ|). apply (nth_error_not_bound Γ x x0).
-        apply En. apply H0. rewrite nth_error_app1 in H0.
-        apply ntl_rel. apply H0. apply H.
+  - simpl. destruct_nat_eq k n.
+    + subst. apply find_index_outer in H0.
+      subst x0. rewrite String.eqb_refl.
+      now apply (weaken_ctx_many nil Γ) in ntl_v.
+    + destruct_str_eq x x0.
+      * subst. apply find_index_outer_length in H0; [|apply nIn].
+        symmetry in H0. contradiction.
+      * apply ntl_rel. rewrite find_index_app1 in H0.
+        assumption. now apply find_index_not_outer in H0.
   - specialize (IHb1 Γ k v' t1' Hk nIn ntl_v H1).
     specialize (IHb2 Γ k v' t2' Hk nIn ntl_v H3).
     simpl. apply ntl_app. apply IHb1. apply IHb2.
   - assert (Hl : S k = List.length (x' :: Γ)). simpl. auto.
-    (* TODO: clean this up *)
-    simpl. destruct (x =? x') eqn:Exb.
-    { apply String.eqb_eq in Exb. rewrite in_app_iff in H2.
-      apply Decidable.not_or in H2 as [_ Hcontra]. simpl in Hcontra.
-      unfold not in Hcontra. destruct Hcontra. auto.
-    }
-    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in Exb. 
+    simpl. apply not_in_snoc in H2 as [Hneq Hin].
+    assert (x <> x') by auto. apply String.eqb_neq in H2. rewrite H2.
+    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in H2. 
     auto. specialize (IHb (x' :: Γ) (S k) v' b'0 Hl H6 ntl_v H5).
-    apply ntl_abs. rewrite in_app_iff in H2. apply Decidable.not_or in H2 as [Hx' _].
-    apply Hx'. assumption. (* closedUnder *) admit.
+    apply ntl_abs; assumption.
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
 Theorem translate_correct_named : forall t v t',
   evalNamed t v ->
