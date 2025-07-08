@@ -497,13 +497,16 @@ Proof.
   - apply ntl_false.
 Qed.
 
-Lemma tl_abs_capture : forall Γ k x x' s ty ty' b b',
-  x = x' ->
-  find_index Γ x = Some k ->
-  translatesToNamed Γ (ntm_abs s ty b) (LamAbs x' ty' b') ->
-  (forall n, find_index (x' :: Γ) x = Some n -> n <> k).
+Lemma find_index_capture : forall Γ k x x',
+  find_index Γ x = Some k -> 
+  x <> x' \/ find_index (x' :: Γ) x <> Some (S k).
 Proof.
-Admitted.
+  intros.
+  destruct_str_eq x x'.
+  + right. subst. unfold not. intros. 
+    now apply find_index_Some_first in H0.
+  + now left.
+Qed.
 
 Lemma csubst_correct : forall Γ k x v b v' b',
   k = #|Γ| ->
@@ -526,13 +529,13 @@ Proof.
   - simpl. apply ntl_app.
     apply IHb1; assumption.
     apply IHb2; assumption.
-  - subst. simpl. destruct_str_eq x x'.
-    + apply ntl_abs. apply H3. inversion H4.
-      subst. destruct_str_eq x' x0. subst.
-      apply tl_outer_not_In in Hfi as HnIn.
-      inversion ntl_b. 
-    + apply ntl_abs; try assumption.
+  - apply (find_index_capture (Γ ++ [x]) k x x') in Hfi as Hbound.
+    destruct Hbound as [Hneq | Hcapt].
+    + subst. apply String.eqb_neq in Hneq as Hneqb.
+      simpl. rewrite Hneqb.
+      apply ntl_abs; try assumption.
       apply IHb; auto. now apply find_index_cons_other.
+    + subst. admit.
   - apply ntl_true.
   - apply ntl_false.
 Admitted.
@@ -552,7 +555,7 @@ Proof with (eauto using BigStepPIR.eval).
     destruct (IHevn2 t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
     inversion ntl_l. subst.
     assert (Hs : translatesToNamed [] (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
-    apply (csubst_correct [] 0 x' v2 b v2' b'); auto. apply find_index_single.
+    apply (csubst_correct [] 0 x' v2 b v2' b'); auto. apply find_index_single_index.
     destruct (IHevn3 (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
     exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
     apply ev_l. apply ev_v2. apply ev_s.

@@ -182,7 +182,7 @@ Proof.
   + discriminate.
 Qed.
 
-Lemma find_index_single : forall x,
+Lemma find_index_single_index : forall x,
   find_index [x] x = Some 0.
 Proof.
   intros. unfold find_index.
