@@ -432,9 +432,10 @@ Inductive evalNamed : ntm -> ntm -> Prop :=
   | EN_False : evalNamed ntm_false ntm_false.
 
 Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
-  | ntl_rel : forall n x, find_index Γ x = Some n -> translatesToNamed Γ (ntm_rel n) (Var x)
+  | ntl_rel : forall n x, 
+      find_index Γ x = Some n -> 
+      translatesToNamed Γ (ntm_rel n) (Var x)
   | ntl_abs : forall x x' ty ty' b b',
-      ~ In x' Γ ->
       translatesTypeTo ty ty' ->
       translatesToNamed (x' :: Γ) b b' ->
       translatesToNamed Γ (ntm_abs x ty b) (LamAbs x' ty' b')
@@ -455,10 +456,10 @@ Proof.
   - split.
     + now apply find_index_Some_length, ltb_lt in H0.
     + simpl. apply find_index_In in H0.
-      apply existsb_exists. exists x. 
+      apply existsb_exists. exists x.
       split. apply H0. now apply String.eqb_eq.
   - simpl. destruct (IHt1 Γ t1' H1), (IHt2 Γ t2' H3). auto.
-  - destruct (IHt (x' :: Γ) b' H5). simpl. auto.
+  - destruct (IHt (x' :: Γ) b' H4). simpl. auto.
   - auto.
   - auto.
 Qed.
@@ -469,96 +470,72 @@ Lemma weaken_ctx : forall Γ x t t',
 Proof.
   intros Γ' x' t. revert Γ' x'.
   induction t; intros Γ x t' tlt_t;
-  inversion tlt_t.
-  - apply ntl_rel. apply find_index_In in H0 as Hin. 
-    now rewrite (find_index_app1).
-  - subst. apply ntl_app. 
+  inversion tlt_t; subst.
+  - apply ntl_rel. now apply find_index_weaken.
+  - apply ntl_app. 
     apply IHt1. apply H1.
     apply IHt2. apply H3.
-  - subst. apply ntl_abs. apply not_in_snoc.
-    split. admit. apply H2.
-    apply H4. apply (IHt (x' :: Γ)). apply H5.
+  - specialize (IHt (x' :: Γ) x b' H4).
+    apply ntl_abs; assumption.
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
 Lemma weaken_ctx_many : forall Γ1 Γ2 t t',
   translatesToNamed Γ1 t t' ->
   translatesToNamed (Γ1 ++ Γ2) t t'.
 Proof.
   intros Γ1 Γ2 t. revert Γ1. induction t;
-  intros Γ1 t' tlt_t; inversion tlt_t.
-  - apply ntl_rel. rewrite find_index_app1.
-    apply H0. now apply find_index_In in H0.
-  - subst. apply ntl_app. 
-    apply IHt1. apply H1.
-    apply IHt2. apply H3.
-  - subst. apply ntl_abs.
-    assert (~ In x' Γ2). admit. (*MARK: admit*)
-    rewrite in_app_iff. unfold not. intros.
-    inversion H0; contradiction.
-    apply H4. now apply (IHt (x' :: Γ1)). 
+  intros Γ1 t' tlt_t; inversion tlt_t; subst.
+  - apply ntl_rel. now apply find_index_weaken.
+  - apply ntl_app.
+    apply IHt1; assumption.
+    apply IHt2; assumption.
+  - apply ntl_abs. assumption.
+    now apply (IHt (x' :: Γ1)). 
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
-Lemma weaken_closedUnder : forall (Γ : list string) x t',
-  closedUnder Γ t' ->
-  closedUnder (Γ ++ [x]) t'.
+Lemma tl_abs_capture : forall Γ k x x' s ty ty' b b',
+  x = x' ->
+  find_index Γ x = Some k ->
+  translatesToNamed Γ (ntm_abs s ty b) (LamAbs x' ty' b') ->
+  (forall n, find_index (x' :: Γ) x = Some n -> n <> k).
 Proof.
-  intros Γ' x t'. revert Γ'. induction t'; intros Γ H.
-  - simpl in *. 
-    rewrite (existsb_app (fun v : string => v =? n) Γ [x]).
-    now rewrite H.
-  - simpl in *. apply (IHt' (b :: Γ) H).
-  - inversion H. apply andb_true_iff in H1 as [Ht1 Ht2].
-    specialize (IHt'1 Γ Ht1). specialize (IHt'2 Γ Ht2).
-    simpl. auto.
-  - auto.
-  - auto.
-  - discriminate.
-Qed.
-
-Lemma tlt_n_length : forall Γ k t',
-  translatesToNamed Γ (ntm_rel k) t' ->
-  k < List.length Γ.
-Proof. 
-  intros Γ k t' tlt.
-  inversion tlt.
-  now apply find_index_Some_length in H0.
-Qed.
+Admitted.
 
 Lemma csubst_correct : forall Γ k x v b v' b',
   k = #|Γ| ->
-  ~ In x Γ ->
+  find_index (Γ ++ [x]) x = Some k ->
   translatesToNamed nil v v' ->
   translatesToNamed (Γ ++ [x]) b b' ->
   translatesToNamed Γ <{[k :-> v] b}> (BigStepPIR.subst x v' b').
 Proof.
   intros Γ k' x v b. revert Γ k'. induction b;
-  intros Γ k v' b' Hk nIn ntl_v ntl_b;
+  intros Γ k v' b' Hk Hfi ntl_v ntl_b;
   inversion ntl_b.
-  - simpl. destruct_nat_eq k n.
-    + subst. apply find_index_outer in H0.
-      subst x0. rewrite String.eqb_refl.
-      now apply (weaken_ctx_many nil Γ) in ntl_v.
-    + destruct_str_eq x x0.
-      * subst. apply find_index_outer_length in H0; [|apply nIn].
-        symmetry in H0. contradiction.
-      * apply ntl_rel. rewrite find_index_app1 in H0.
-        assumption. now apply find_index_not_outer in H0.
-  - specialize (IHb1 Γ k v' t1' Hk nIn ntl_v H1).
-    specialize (IHb2 Γ k v' t2' Hk nIn ntl_v H3).
-    simpl. apply ntl_app. apply IHb1. apply IHb2.
-  - assert (Hl : S k = List.length (x' :: Γ)). simpl. auto.
-    simpl. apply not_in_snoc in H2 as [Hneq Hin].
-    assert (x <> x') by auto. apply String.eqb_neq in H2. rewrite H2.
-    assert (~ In x (x'::Γ)). apply not_in_cons. apply String.eqb_neq in H2. 
-    auto. specialize (IHb (x' :: Γ) (S k) v' b'0 Hl H6 ntl_v H5).
-    apply ntl_abs; assumption.
+  - subst. specialize (find_index_binder_spec Γ x x0 n Hfi H0) as Hrel.
+    destruct Hrel as [[Hx Hk] | [Hnx Hnk]].
+    + apply String.eqb_eq in Hx. apply eqb_eq in Hk.
+      simpl. rewrite Hx, Hk. now apply (weaken_ctx_many nil Γ) in ntl_v.
+    + apply String.eqb_neq in Hnx as Hnxb. apply eqb_neq in Hnk.
+      simpl. rewrite Hnxb, Hnk. apply ntl_rel.
+      apply find_index_not_outer in H0 as Hin.
+      now rewrite find_index_app1 in H0. apply Hnx.
+  - simpl. apply ntl_app.
+    apply IHb1; assumption.
+    apply IHb2; assumption.
+  - subst. simpl. destruct_str_eq x x'.
+    + apply ntl_abs. apply H3. inversion H4.
+      subst. destruct_str_eq x' x0. subst.
+      apply tl_outer_not_In in Hfi as HnIn.
+      inversion ntl_b. 
+    + apply ntl_abs; try assumption.
+      apply IHb; auto. now apply find_index_cons_other.
   - apply ntl_true.
   - apply ntl_false.
-Qed.
+Admitted.
 
 Theorem translate_correct_named : forall t v t',
   evalNamed t v ->
@@ -575,8 +552,7 @@ Proof with (eauto using BigStepPIR.eval).
     destruct (IHevn2 t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
     inversion ntl_l. subst.
     assert (Hs : translatesToNamed [] (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
-    apply (csubst_correct [] 0 x' v2 b v2' b'). 
-    reflexivity. apply H4. assumption. simpl. apply H7.
+    apply (csubst_correct [] 0 x' v2 b v2' b'); auto. apply find_index_single.
     destruct (IHevn3 (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
     exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
     apply ev_l. apply ev_v2. apply ev_s.

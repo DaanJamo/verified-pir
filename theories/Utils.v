@@ -21,10 +21,10 @@ Proof.
   induction l1; auto.
 Qed.
 
-Lemma in_not_in : forall {A} (l : list A) (x x' : A),
+Lemma in_not_in : forall {A} (l : list A) (x y : A),
   In x l ->
-  ~ In x' l ->
-  x <> x'.
+  ~ In y l ->
+  x <> y.
 Proof.
   unfold not. intros.
   subst. contradiction.
@@ -64,11 +64,11 @@ Proof.
     split; auto.
 Qed.
 
-Lemma nth_error_not_snoc : forall {A} (l : list A) n x x',
+Lemma nth_error_not_snoc : forall {A} (l : list A) n x y,
   ~ In x l ->
   n < length l ->
-  nth_error (l ++ [x]) n = Some x' ->
-  x <> x'.
+  nth_error (l ++ [x]) n = Some y ->
+  x <> y.
 Proof.
   intros. rewrite nth_error_app1 in H1; [|assumption].
   apply nth_error_In in H1. 
@@ -93,9 +93,9 @@ Proof.
   auto. apply Nat.le_refl.
 Qed.
 
-Lemma nth_error_not_bound : forall {A} (l : list A) x x' n,
+Lemma nth_error_not_bound : forall {A} (l : list A) x y n,
   length l <> n ->
-  nth_error (l ++ [x]) n = Some x' ->
+  nth_error (l ++ [x]) n = Some y ->
   n < length l.
 Proof.
   intros.
@@ -164,14 +164,29 @@ Proof.
   apply find_index'_Some_length.
 Qed.
 
-Lemma find_index_Some_single : forall x x' n,
-  find_index [x] x' = Some n ->
-  x = x'.
+Lemma find_index_Some_first : forall l x n,
+  find_index (x :: l) x = Some n ->
+  n = 0.
 Proof.
-  intros x x' n. unfold find_index. simpl.
-  destruct (eqb x x') eqn:Heq.
+  intros. unfold find_index in H.
+  simpl in H. now rewrite eqb_refl in H.
+Qed.
+
+Lemma find_index_Some_single : forall x y n,
+  find_index [x] y = Some n ->
+  x = y.
+Proof.
+  intros x y n. unfold find_index. simpl.
+  destruct (eqb x y) eqn:Heq.
   + now apply eqb_eq in Heq.
   + discriminate.
+Qed.
+
+Lemma find_index_single : forall x,
+  find_index [x] x = Some 0.
+Proof.
+  intros. unfold find_index.
+  simpl. now rewrite eqb_refl.
 Qed.
 
 Lemma find_index_cons_succ : forall l a x n,
@@ -186,6 +201,16 @@ Proof.
     + destruct (eqb a x).
       * inversion Hfi. reflexivity.
       * now apply find_index'_acc_succ in Hfi.
+Qed.
+
+Lemma find_index_cons_other : forall l a x n,
+  a <> x ->
+  find_index l x = Some n ->
+  find_index (a :: l) x = Some (S n).
+Proof.
+  intros l a x n Hneq Hfi. unfold find_index. 
+  apply eqb_neq in Hneq. simpl. rewrite Hneq.
+  now apply find_index'_acc_succ in Hfi.
 Qed.
 
 Lemma find_index_In : forall l x n,
@@ -203,8 +228,8 @@ Proof.
       rewrite Nat.succ_pred. apply Hfi.
       apply find_index'_n_min_acc in Hfi.
       lia.
-Qed.  
-      
+Qed.
+
 Lemma find_index_app1 : forall l1 l2 x,
   In x l1 ->
   find_index (l1 ++ l2) x = find_index l1 x.
@@ -247,24 +272,43 @@ Proof.
     rewrite Hfi. f_equal. lia. apply Hnin.
 Qed.
 
-Lemma find_index_outer : forall l x x',
-  find_index (l ++ [x]) x' = Some (length l) ->
-  x = x'.
+Lemma find_index_weaken : forall l1 l2 x n,
+  find_index l1 x = Some n ->
+  find_index (l1 ++ l2) x = Some n.
+Proof.
+  intros.
+  apply find_index_In in H as Hin.
+  now rewrite find_index_app1.
+Qed.
+
+Lemma find_index_outer : forall l x y,
+  find_index (l ++ [x]) y = Some (length l) ->
+  x = y.
 Proof.
   unfold find_index. induction l; intros.
-  - simpl in H. destruct (eqb x x') eqn:Heq.
+  - simpl in H. destruct (eqb x y) eqn:Heq.
     + now apply eqb_eq in Heq.
     + discriminate.
   - apply IHl. simpl in H.
-    destruct (eqb a x').
+    destruct (eqb a y).
     + discriminate.
     + now apply find_index'_acc_succ.
 Qed.
 
-Lemma find_index_not_outer : forall l x x' n,
-  x <> x' ->
-  find_index (l ++ [x]) x' = Some n ->
-  In x' l.
+Lemma find_index_outer_not_In : forall l x,
+  find_index (l ++ [x]) x = Some (length l) ->
+  ~ In x l.
+Proof.
+  unfold not. intros.
+  rewrite find_index_app1 in H; [|assumption].
+  apply find_index_Some_length in H as Hl.
+  now apply Nat.lt_irrefl in Hl.
+Qed.
+
+Lemma find_index_not_outer : forall l x y n,
+  x <> y ->
+  find_index (l ++ [x]) y = Some n ->
+  In y l.
 Proof.
   intros. apply find_index_In in H0.
   rewrite in_app_iff in H0. inversion H0.
@@ -272,9 +316,9 @@ Proof.
   contradiction. destruct H2.
 Qed.
 
-Lemma find_index_outer_length : forall l x x' n,
-  ~ In x' l ->
-  find_index (l ++ [x]) x' = Some n ->
+Lemma find_index_outer_length : forall l x y n,
+  ~ In y l ->
+  find_index (l ++ [x]) y = Some n ->
   n = length l.
 Proof.
   intros. unfold find_index in H0.
@@ -282,5 +326,22 @@ Proof.
   apply find_index'_n_min_acc in H0 as Hl_min.
   apply find_index'_Some_length in H0 as Hl_max.
   simpl in *. lia. assumption.
+Qed.
+
+Lemma find_index_binder_spec : forall l x y n,
+  find_index (l ++ [x]) x = Some (length l) ->
+  find_index (l ++ [x]) y = Some n ->
+  (x = y /\ length l = n) \/ (x <> y /\ length l <> n).
+Proof.
+  intros. destruct l.
+  - apply find_index_outer_length in H0 as Hl.
+    now apply find_index_Some_single in H0. auto.
+  - destruct_nat_eq (length (s :: l)) n.
+    + subst. apply find_index_outer in H0.
+      now left.
+    + destruct_str_eq x y.
+      * subst. rewrite H in H0. inversion H0.
+        contradiction.
+      * now right.
 Qed.
   
