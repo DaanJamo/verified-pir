@@ -446,24 +446,6 @@ Inductive translatesToNamed (Γ : list string) : ntm -> term -> Prop :=
   | ntl_true : translatesToNamed Γ ntm_true (Constant (ValueOf DefaultUniBool true))
   | ntl_false : translatesToNamed Γ ntm_false (Constant (ValueOf DefaultUniBool false)).
 
-Lemma tl_closed : forall Γ t t',
-  translatesToNamed Γ t t' ->
-    closedn #|Γ| t /\
-    closedUnder Γ t'.
-Proof.
-  intros Γ' t. revert Γ'; induction t; 
-  intros Γ t'' tlt_t; inversion tlt_t.
-  - split.
-    + now apply find_index_Some_length, ltb_lt in H0.
-    + simpl. apply find_index_In in H0.
-      apply existsb_exists. exists x.
-      split. apply H0. now apply String.eqb_eq.
-  - simpl. destruct (IHt1 Γ t1' H1), (IHt2 Γ t2' H3). auto.
-  - destruct (IHt (x' :: Γ) b' H4). simpl. auto.
-  - auto.
-  - auto.
-Qed.
-
 Lemma weaken_ctx : forall Γ x t t',
   translatesToNamed Γ t t' ->
   translatesToNamed (Γ ++ [x]) t t'.
@@ -540,65 +522,23 @@ Proof.
   - apply ntl_false.
 Qed.
 
-Lemma subst_shadowed : forall Γ x b b' v',
-  In x Γ ->
-  translatesToNamed (Γ ++ [x]) b b' ->
-  BigStepPIR.subst x v' b' = b'.
-Proof.
-  intros Γ x b b'. revert Γ b. induction b';
-  intros Γ b'' v Hin tlt; inversion tlt; subst.
-  - simpl. (* here we'd have to reason backwards to show that the same name
-    would imply that a binder before this would have stopped substitution *) admit.
-  - simpl. destruct_str_eq x b.
-    + reflexivity.
-    + f_equal. assert (In x (b :: Γ)) by now right. 
-      now apply (IHb' (b :: Γ) b0). 
-  - simpl.
-    rewrite (IHb'1 Γ t1); try assumption.
-    rewrite (IHb'2 Γ t2); try assumption.
-    reflexivity.
-  - reflexivity.
-  - reflexivity.
-Admitted.
-
-Theorem csubst_rel_correct : forall Γ x y v v' k,
-  translatesToNamed nil v v' ->
-  translatesToNamed (Γ ++ [x]) (ntm_rel k) (Var y) ->
-  translatesToNamed Γ (csubst (List.length Γ) v (ntm_rel k)) (BigStepPIR.subst x v' (Var y)).
-Proof.
-  intros Γ x y v v' k ntl_v ntl_b.
-  inversion ntl_b.
-  apply find_index_app_iff in H1 as Hshadowed.
-  inversion Hshadowed.
-  + apply find_index_shadowed_length in H1 as Hl; auto.
-    destruct_str_eq x y.
-    - subst.
-      erewrite csubst_shadowed; eauto.
-      (* There is a binder that has shadowed the variable we're substituting for:
-         \y...\y...y so k refers to this second binder instead. PIR should have stopped
-         substituting at this second binder so we couldn't have ended up here. *)
-      erewrite subst_shadowed; eauto. (* this was an attempt to solve it similarly to csubst*)
-      (* this isn't the right lemma yet*)
-      now apply strengthen_shadowed_ctx in ntl_b.
-    - simpl. rewrite Hl, Heqb.
-      rewrite find_index_app1 in H1; auto.
-      now apply ntl_rel.
-  + simpl. destruct H2.
-    apply find_index_outer_length in H1 as Hl; auto.
-    subst. apply find_index_outer in H1 as Hx; auto.
-    apply String.eqb_eq in Hx. rewrite eqb_refl, Hx.
-    now eapply weaken_ctx_many in ntl_v.
-Qed.
-
 Lemma csubst_correct : forall Γ x v b v' b',
+  ~ In x Γ ->
   translatesToNamed nil v v' ->
   translatesToNamed (Γ ++ [x]) b b' ->
   translatesToNamed Γ (csubst (List.length Γ) v b) (BigStepPIR.subst x v' b').
 Proof.
   intros Γ x v b. revert Γ. induction b;
-  intros Γ v' b' tlt_v tlt_b;
+  intros Γ v' b' HnIn tlt_v tlt_b;
   inversion tlt_b.
-  - subst b'. now apply csubst_rel_correct.
+  - subst. simpl. destruct_str_eq x x0.
+    + subst. apply find_index_outer_length in H0 as Hl; auto.
+      symmetry in Hl. apply eqb_eq in Hl. rewrite Hl.
+      now eapply weaken_ctx_many in tlt_v.
+    + apply find_index_not_outer in H0 as Hin; auto.
+      apply find_index_not_outer_length in H0 as Hl; auto.
+      rewrite find_index_app1 in H0; auto. rewrite Hl.
+      now apply ntl_rel.
   - simpl. apply ntl_app.
     apply IHb1; assumption.
     apply IHb2; assumption.
@@ -609,7 +549,7 @@ Proof.
       specialize (csubst_shadowed (x :: Γ) x b b'0 v Hin H4) as H1.
       simpl in H1. now rewrite H1.
     + apply ntl_abs; try assumption.
-      apply IHb; auto.
+      apply IHb; auto. now apply not_in_cons.
   - apply ntl_true.
   - apply ntl_false.
 Qed.

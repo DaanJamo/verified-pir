@@ -381,6 +381,20 @@ Proof.
   contradiction. destruct H2.
 Qed.
 
+Lemma find_index_not_outer_length : forall l x y n,
+  x <> y ->
+  find_index (l ++ [x]) y = Some n ->
+  (length l =? n) = false.
+Proof.
+  intros. apply find_index_In in H0 as Hin.
+  rewrite in_app_iff in Hin. inversion Hin.
+  + rewrite find_index_app1 in H0; auto.
+    apply find_index_Some_length in H0 as Hl.
+    apply Nat.lt_neq, Nat.neq_sym, Nat.eqb_neq in Hl.
+    assumption.
+  + simpl in H1. inversion H1. contradiction. destruct H2.
+Qed.
+
 Lemma find_index_outer_length : forall l x y n,
   ~ In y l ->
   find_index (l ++ [x]) y = Some n ->
