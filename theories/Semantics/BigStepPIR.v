@@ -49,12 +49,6 @@ Fixpoint closedUnder Γ t : bool :=
 
 Notation closed t := (closedUnder nil t).
 
-Lemma subst_closed : forall Γ t,
-    closedUnder Γ t = true ->
-    forall x s,
-      <{ [x := s] t }> = t.
-Proof. Admitted.
-
 Function fv (t : term) : list string :=
     match t with
      | Var n           => [n]

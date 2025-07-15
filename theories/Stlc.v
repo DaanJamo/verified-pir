@@ -497,48 +497,123 @@ Proof.
   - apply ntl_false.
 Qed.
 
-Lemma find_index_capture : forall Γ k x x',
-  find_index Γ x = Some k -> 
-  x <> x' \/ find_index (x' :: Γ) x <> Some (S k).
+Lemma csubst_shadowed : forall Γ x b b' v,
+  In x Γ ->
+  translatesToNamed (Γ ++ [x]) b b' ->
+  csubst (List.length Γ) v b = b.
 Proof.
-  intros.
-  destruct_str_eq x x'.
-  + right. subst. unfold not. intros. 
-    now apply find_index_Some_first in H0.
-  + now left.
+  intros Γ x b. revert Γ. induction b; 
+  intros Γ b' v Hin tlt; inversion tlt.
+  - simpl.
+    destruct_nat_eq (List.length Γ) n.
+    + subst. apply find_index_outer in H0 as Hx.
+      subst x. now apply find_index_outer_not_In in H0.
+    + reflexivity.
+  - simpl.
+    rewrite (IHb1 Γ t1' v); try assumption.
+    rewrite (IHb2 Γ t2' v); try assumption.
+    reflexivity.
+  - specialize (IHb (x' :: Γ) b'0 v).
+    simpl in *. rewrite IHb; auto.
+  - reflexivity.
+  - reflexivity.
 Qed.
 
-Lemma csubst_correct : forall Γ k x v b v' b',
-  k = #|Γ| ->
-  find_index (Γ ++ [x]) x = Some k ->
+Lemma strengthen_shadowed_ctx : forall Γ x b b',
+  In x Γ ->
+  translatesToNamed (Γ ++ [x]) b b' ->
+  translatesToNamed (Γ) b b'.
+Proof.
+  intros Γ x b. revert Γ. induction b;
+  intros Γ b' Hin tlt; inversion tlt; subst.
+  - apply ntl_rel. 
+    destruct_str_eq x x0.
+    + subst. now rewrite find_index_app1 in H0.
+    + rewrite find_index_app1 in H0. auto.
+      now eapply find_index_not_outer.
+  - apply ntl_app.
+    apply IHb1; assumption.
+    apply IHb2; assumption.
+  - apply ntl_abs. assumption.
+    apply IHb. now right. assumption.
+  - apply ntl_true.
+  - apply ntl_false.
+Qed.
+
+Lemma subst_shadowed : forall Γ x b b' v',
+  In x Γ ->
+  translatesToNamed (Γ ++ [x]) b b' ->
+  BigStepPIR.subst x v' b' = b'.
+Proof.
+  intros Γ x b b'. revert Γ b. induction b';
+  intros Γ b'' v Hin tlt; inversion tlt; subst.
+  (* - apply find_index_app_iff in H1 as Hshadowed.
+    inversion Hshadowed.
+    + apply find_index_shadowed_length in H1 as Hl.
+      apply strengthen_shadowed_ctx in tlt as tlt'.
+      inversion tlt'. subst.
+      simpl. *)
+  - simpl. admit.
+  - simpl. destruct_str_eq x b.
+    + reflexivity.
+    + f_equal. assert (In x (b :: Γ)) by now right. 
+      now apply (IHb' (b :: Γ) b0). 
+  - simpl.
+    rewrite (IHb'1 Γ t1); try assumption.
+    rewrite (IHb'2 Γ t2); try assumption.
+    reflexivity.
+  - reflexivity.
+  - reflexivity.
+Admitted.
+
+Theorem csubst_rel_correct : forall Γ x y v v' k,
+  translatesToNamed nil v v' ->
+  translatesToNamed (Γ ++ [x]) (ntm_rel k) (Var y) ->
+  translatesToNamed Γ (csubst (List.length Γ) v (ntm_rel k)) (BigStepPIR.subst x v' (Var y)).
+Proof.
+  intros Γ x y v v' k ntl_v ntl_b.
+  inversion ntl_b.
+  apply find_index_app_iff in H1 as Hshadowed.
+  inversion Hshadowed.
+  + apply find_index_shadowed_length in H1 as Hl; auto.
+    destruct_str_eq x y.
+    - subst.
+      erewrite csubst_shadowed; eauto.
+      erewrite subst_shadowed; eauto.
+      now apply strengthen_shadowed_ctx in ntl_b.
+    - simpl. rewrite Hl, Heqb.
+      rewrite find_index_app1 in H1; auto.
+      now apply ntl_rel.
+  + destruct H2. simpl in H3. inversion H3; [|contradiction].
+    simpl. apply String.eqb_eq in H4. rewrite H4.
+    apply find_index_outer_length in H1 as Hl; auto.
+    symmetry in Hl. apply eqb_eq in Hl. rewrite Hl.
+    now eapply weaken_ctx_many in ntl_v.
+Qed.
+
+Lemma csubst_correct : forall Γ x v b v' b',
   translatesToNamed nil v v' ->
   translatesToNamed (Γ ++ [x]) b b' ->
-  translatesToNamed Γ <{[k :-> v] b}> (BigStepPIR.subst x v' b').
+  translatesToNamed Γ (csubst (List.length Γ) v b) (BigStepPIR.subst x v' b').
 Proof.
-  intros Γ k' x v b. revert Γ k'. induction b;
-  intros Γ k v' b' Hk Hfi ntl_v ntl_b;
-  inversion ntl_b.
-  - subst. specialize (find_index_binder_spec Γ x x0 n Hfi H0) as Hrel.
-    destruct Hrel as [[Hx Hk] | [Hnx Hnk]].
-    + apply String.eqb_eq in Hx. apply eqb_eq in Hk.
-      simpl. rewrite Hx, Hk. now apply (weaken_ctx_many nil Γ) in ntl_v.
-    + apply String.eqb_neq in Hnx as Hnxb. apply eqb_neq in Hnk.
-      simpl. rewrite Hnxb, Hnk. apply ntl_rel.
-      apply find_index_not_outer in H0 as Hin.
-      now rewrite find_index_app1 in H0. apply Hnx.
+  intros Γ x v b. revert Γ. induction b;
+  intros Γ v' b' tlt_v tlt_b;
+  inversion tlt_b.
+  - subst b'. now apply csubst_rel_correct.
   - simpl. apply ntl_app.
     apply IHb1; assumption.
     apply IHb2; assumption.
-  - apply (find_index_capture (Γ ++ [x]) k x x') in Hfi as Hbound.
-    destruct Hbound as [Hneq | Hcapt].
-    + subst. apply String.eqb_neq in Hneq as Hneqb.
-      simpl. rewrite Hneqb.
-      apply ntl_abs; try assumption.
-      apply IHb; auto. now apply find_index_cons_other.
-    + subst. admit.
+  - subst. simpl. destruct_str_eq x x'.
+    + subst x'. apply ntl_abs. assumption.
+      assert (Hin : In x (x::Γ)). now left.
+      specialize (strengthen_shadowed_ctx (x :: Γ) x b b'0 Hin H4) as Hctx.
+      specialize (csubst_shadowed (x :: Γ) x b b'0 v Hin H4) as H1.
+      simpl in H1. now rewrite H1.
+    + apply ntl_abs; try assumption.
+      apply IHb; auto.
   - apply ntl_true.
   - apply ntl_false.
-Admitted.
+Qed.
 
 Theorem translate_correct_named : forall t v t',
   evalNamed t v ->
@@ -555,12 +630,39 @@ Proof with (eauto using BigStepPIR.eval).
     destruct (IHevn2 t2' H3) as [v2' [k2 [nln_v2 ev_v2]]].
     inversion ntl_l. subst.
     assert (Hs : translatesToNamed [] (csubst 0 v2 b) (BigStepPIR.subst x' v2' b')).
-    apply (csubst_correct [] 0 x' v2 b v2' b'); auto. apply find_index_single_index.
+    apply (csubst_correct [] x' v2 b v2' b'); auto.
     destruct (IHevn3 (BigStepPIR.subst x' v2' b') Hs) as [v' [k3 [ntl_s ev_s]]].
     exists v'. eexists. split. apply ntl_s. eapply E_Apply. eexists.
     apply ev_l. apply ev_v2. apply ev_s.
   - exists t'. eexists. subst...
   - exists t'. eexists. subst...
+Qed.
+
+Theorem allowed_shadowing Γ :
+  let nt := ntm_abs "x" Ty_Bool 
+              (ntm_abs "x" Ty_Bool (ntm_rel 0)) in
+  let pt := LamAbs "x" (Ty_Builtin DefaultUniBool) 
+              (LamAbs "x" (Ty_Builtin DefaultUniBool) (Var "x")) in
+  translatesToNamed Γ nt pt.
+Proof.
+  intros. unfold nt, pt.
+  apply ntl_abs. apply tlty_bool.
+  apply ntl_abs. apply tlty_bool.
+  apply ntl_rel. apply find_index_first.
+Qed.
+
+Theorem disallowed_shadowing Γ n :
+  n > 0 ->
+  let nt := ntm_abs "x" Ty_Bool 
+              (ntm_abs "x" Ty_Bool (ntm_rel n)) in
+  let pt := LamAbs "x" (Ty_Builtin DefaultUniBool) 
+              (LamAbs "x" (Ty_Builtin DefaultUniBool) (Var "x")) in
+  ~ translatesToNamed (Γ ++ ["x"]) nt pt.
+Proof.
+  unfold not. intros Hn tlt. 
+  invs tlt. invs H6. invs H8. 
+  apply find_index_Some_first in H3. 
+  apply lt_neq, neq_sym in Hn. contradiction. 
 Qed.
 
 End nameless.

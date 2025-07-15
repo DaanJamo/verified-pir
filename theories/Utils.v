@@ -21,13 +21,27 @@ Proof.
   induction l1; auto.
 Qed.
 
-Lemma in_not_in : forall {A} (l : list A) (x y : A),
+Lemma In_not_In : forall {A} (l : list A) (x y : A),
   In x l ->
   ~ In y l ->
   x <> y.
 Proof.
   unfold not. intros.
   subst. contradiction.
+Qed.
+
+Lemma In_middle : forall {A} (l : list A) (x y : A),
+  x <> y ->
+  In x (y :: l ++ [y]) ->
+  In x l.
+Proof.
+  intros.
+  inversion H0.
+  symmetry in H1. contradiction.
+  rewrite in_app_iff in H1.
+  inversion H1. apply H2. inversion H2.
+  symmetry in H3. contradiction.
+  inversion H3.
 Qed.
 
 Lemma length_pred_middle : forall {A} (l1 l2 : list A) x n,
@@ -72,7 +86,7 @@ Lemma nth_error_not_snoc : forall {A} (l : list A) n x y,
 Proof.
   intros. rewrite nth_error_app1 in H1; [|assumption].
   apply nth_error_In in H1. 
-  symmetry. apply (in_not_in l); assumption.
+  symmetry. apply (In_not_In l); assumption.
 Qed.
 
 Lemma nth_error_middle : forall {A} (Γ1 Γ2 : list A) x n v,
@@ -164,13 +178,31 @@ Proof.
   apply find_index'_Some_length.
 Qed.
 
+Lemma find_index_first : forall l x,
+  find_index (x :: l) x = Some 0.
+Proof.
+  intros. unfold find_index.
+  simpl. now rewrite eqb_refl.
+Qed.
+
 Lemma find_index_Some_first : forall l x n,
   find_index (x :: l) x = Some n ->
   n = 0.
 Proof.
-  intros. unfold find_index in H.
-  simpl in H. now rewrite eqb_refl in H.
+  intros. rewrite find_index_first in H.
+  now inversion H.
 Qed.
+
+Lemma find_index_first_index : forall l x y,
+  find_index (x :: l) y = Some 0 ->
+  x = y.
+Proof.
+  intros.
+  destruct_str_eq x y.
+  + assumption.
+  + unfold find_index in H. simpl in H. rewrite Heqb in H. 
+    now apply find_index'_n_min_acc in H.
+Qed. 
 
 Lemma find_index_Some_single : forall x y n,
   find_index [x] y = Some n ->
@@ -229,6 +261,28 @@ Proof.
       apply find_index'_n_min_acc in Hfi.
       lia.
 Qed.
+
+Lemma find_index_inj : forall l x y n,
+  find_index l x = Some n ->
+  find_index l y = Some n ->
+  x = y.
+Proof.
+  induction l; intros.
+  - unfold find_index in H. simpl in H.
+    discriminate H.
+  - destruct_str_eq a x.
+    + subst. apply find_index_Some_first in H.
+      subst. now eapply find_index_first_index.
+    + unfold find_index in *. simpl in *.
+      rewrite Heqb in H.
+      destruct_str_eq a y.
+      * inversion H0. subst.
+        apply find_index'_n_min_acc in H. lia.
+      * specialize (IHl x y (pred n)).
+        apply find_index'_n_min_acc in H as Hl.
+        apply IHl; apply find_index'_acc_succ;
+        rewrite Nat.succ_pred_pos; assumption.
+Qed. 
 
 Lemma find_index_app1 : forall l1 l2 x,
   In x l1 ->
@@ -305,6 +359,17 @@ Proof.
   now apply Nat.lt_irrefl in Hl.
 Qed.
 
+Lemma find_index_not_In : forall l1 l2 x n,
+  find_index (l1 ++ l2) x = Some n ->
+  n >= length l1 ->
+  ~ In x l1.
+Proof.
+  unfold not. intros.
+  rewrite find_index_app1 in H; [|assumption].
+  apply find_index_Some_length in H as Hl.
+  lia.
+Qed.
+
 Lemma find_index_not_outer : forall l x y n,
   x <> y ->
   find_index (l ++ [x]) y = Some n ->
@@ -328,20 +393,34 @@ Proof.
   simpl in *. lia. assumption.
 Qed.
 
-Lemma find_index_binder_spec : forall l x y n,
-  find_index (l ++ [x]) x = Some (length l) ->
+Lemma find_index_shadowed_length : forall l x y n,
+  In y l ->
   find_index (l ++ [x]) y = Some n ->
-  (x = y /\ length l = n) \/ (x <> y /\ length l <> n).
+  (length l =? n) = false.
 Proof.
-  intros. destruct l.
-  - apply find_index_outer_length in H0 as Hl.
-    now apply find_index_Some_single in H0. auto.
-  - destruct_nat_eq (length (s :: l)) n.
-    + subst. apply find_index_outer in H0.
-      now left.
-    + destruct_str_eq x y.
-      * subst. rewrite H in H0. inversion H0.
-        contradiction.
-      * now right.
+  intros l x y n Hin Hfi.
+  rewrite find_index_app1 in Hfi; auto.
+  apply find_index_Some_length in Hfi as Hl.
+  now apply Nat.lt_neq, Nat.neq_sym, Nat.eqb_neq in Hl.
 Qed.
   
+Lemma find_index_app_iff : forall l1 l2 x n,
+  find_index (l1 ++ l2) x = Some n ->
+  In x l1 \/ (~ In x l1 /\ In x l2).
+Proof.
+  intros l1 l2 x n H. 
+  apply find_index_In in H as Hin. revert H. 
+  unfold find_index. generalize 0 as acc. 
+  induction l1; intros acc H.
+  - now right.
+  - destruct_str_eq a x.
+    + left. now left.
+    + simpl in H. rewrite Heqb in H.
+      inversion Hin. contradiction.
+      apply IHl1 in H; auto. inversion H.
+      * left. now right.
+      * destruct H1. right. split. 
+        simpl. unfold not. intros.
+        inversion H3; contradiction.
+        apply H2.
+Qed.
