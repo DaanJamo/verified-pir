@@ -522,7 +522,7 @@ Qed.
 Lemma strengthen_shadowed_ctx : forall Γ x b b',
   In x Γ ->
   translatesToNamed (Γ ++ [x]) b b' ->
-  translatesToNamed (Γ) b b'.
+  translatesToNamed Γ b b'.
 Proof.
   intros Γ x b. revert Γ. induction b;
   intros Γ b' Hin tlt; inversion tlt; subst.
@@ -547,13 +547,8 @@ Lemma subst_shadowed : forall Γ x b b' v',
 Proof.
   intros Γ x b b'. revert Γ b. induction b';
   intros Γ b'' v Hin tlt; inversion tlt; subst.
-  (* - apply find_index_app_iff in H1 as Hshadowed.
-    inversion Hshadowed.
-    + apply find_index_shadowed_length in H1 as Hl.
-      apply strengthen_shadowed_ctx in tlt as tlt'.
-      inversion tlt'. subst.
-      simpl. *)
-  - simpl. admit.
+  - simpl. (* here we'd have to reason backwards to show that the same name
+    would imply that a binder before this would have stopped substitution *) admit.
   - simpl. destruct_str_eq x b.
     + reflexivity.
     + f_equal. assert (In x (b :: Γ)) by now right. 
@@ -579,15 +574,19 @@ Proof.
     destruct_str_eq x y.
     - subst.
       erewrite csubst_shadowed; eauto.
-      erewrite subst_shadowed; eauto.
+      (* There is a binder that has shadowed the variable we're substituting for:
+         \y...\y...y so k refers to this second binder instead. PIR should have stopped
+         substituting at this second binder so we couldn't have ended up here. *)
+      erewrite subst_shadowed; eauto. (* this was an attempt to solve it similarly to csubst*)
+      (* this isn't the right lemma yet*)
       now apply strengthen_shadowed_ctx in ntl_b.
     - simpl. rewrite Hl, Heqb.
       rewrite find_index_app1 in H1; auto.
       now apply ntl_rel.
-  + destruct H2. simpl in H3. inversion H3; [|contradiction].
-    simpl. apply String.eqb_eq in H4. rewrite H4.
+  + simpl. destruct H2.
     apply find_index_outer_length in H1 as Hl; auto.
-    symmetry in Hl. apply eqb_eq in Hl. rewrite Hl.
+    subst. apply find_index_outer in H1 as Hx; auto.
+    apply String.eqb_eq in Hx. rewrite eqb_refl, Hx.
     now eapply weaken_ctx_many in ntl_v.
 Qed.
 
