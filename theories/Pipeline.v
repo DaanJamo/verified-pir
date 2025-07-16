@@ -1,7 +1,7 @@
 From Coq Require Import Program.
 From MetaCoq.Utils Require Import utils.
 From MetaCoq.Common Require Import Transform config.
-From MetaCoq.Erasure Require Import ExAst.
+From MetaCoq.Erasure Require Import ExAst EProgram EWcbvEval.
 From MetaCoq.Erasure.Typed Require Import Annotations TypeAnnotations Utils.
 From MetaCoq.ErasurePlugin Require Import Erasure Loader.
 From MetaCoq.PCUIC Require Import PCUICAst.
@@ -26,33 +26,50 @@ Import Common.Transform.Transform.
 #[local] Obligation Tactic := program_simpl.
 
 Definition pir_fuel := 5000.
-Definition pir_program := (list string * PIR.term).
+Definition pir_program := (unit * PIR.term).
 Definition eval_pir_program (p' : pir_program) (t' : PIR.term) :=
   BigStepPIR.eval p'.2 t' 5000.
 
-Definition nom (p : EProgram.eprogram) : pir_program := ([], PIR.Var "x"%string).
+Definition prog  : eprogram := ([], EAst.tBox).
+Definition prog' : pir_program := (tt, PIR.Var "x"%string).
 
-Program Definition box_to_pir_transform : Transform.t _ _ EAst.term PIR.term _ _
-  (EProgram.eval_eprogram EWcbvEval.default_wcbv_flags)
+Definition always  (p  : eprogram)    : Prop := True.
+Definition always' (p' : pir_program) : Prop := True.
+Definition trust (p : eprogram) (pre : always p) := True.
+
+Definition nom (p : eprogram) : always p -> pir_program := fun _ => (tt, PIR.Var "x"%string).
+
+(* Record
+t (env env' term term' value value' : Type) (eval : program env term -> value -> Prop)
+(eval' : program env' term' -> value' -> Prop) : Type := Build_t
+  { name : bytestring.string;  pre : program env term -> Prop;
+  transform : forall p : program env term, pre p -> program env' term';
+  post : program env' term' -> Prop;
+  correctness : forall (input : program env term) (p : pre input), post (transform input p);
+  obseq : forall p : program env term, pre p -> program env' term' -> value -> value' -> Prop;
+  preservation : preserves_eval pre transform obseq }. *)
+
+Program Definition box_to_pir_transform_test : 
+  Transform.t global_context unit EAst.term PIR.term EAst.term PIR.term
+  (eval_eprogram default_wcbv_flags)
   (eval_pir_program) := 
   {| name := "translate lambda box terms into PIR terms";
-     transform p _ := nom p;
+     pre p := always p;
+     transform p pre := nom p pre;
+     post p' := always' p';
+     correctness p pre := _;
+     obseq p Hp p' _ _ := _;
+     preservation := _
   |}.
 Next Obligation.
-Admitted.
+  unfold always in Hp. Admitted.
 Next Obligation.
-Admitted.
-Next Obligation.
-Admitted.
-Next Obligation.
-Admitted.
-Next Obligation.
-Admitted.
+  Admitted.
 
-Eval cbv in (run box_to_pir_transform).
+Definition run_transform (t : EAst.term) :=
+  run box_to_pir_transform_test ([], t).
 
-
-MetaCoq Quote Recursively Definition gid := 3.
+Eval cbv in (run_transform EAst.tBox I).
 
 Definition template_to_lt (t : Ast.term) : TemplateMonad (∑ et : EAst.term, annots box_type et) :=
   match t with
@@ -69,8 +86,6 @@ Definition compile_pir (t : Ast.term) : TemplateMonad PIR.term :=
     end
   end.
 
-(* MetaCoq Run ((tmQuoteRec 3) >>= tmEval cbv >>= tmPrint).
-MetaCoq Quote Recursively Definition gid := gal_id.
-Eval cbv in (gid.2). *)
-
 MetaCoq Run (tmQuote gal_id >>= compile_pir >>= tmEval cbn >>= tmPrint).
+
+MetaCoq Erase -typed gal_id.
