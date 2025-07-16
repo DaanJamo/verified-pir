@@ -49,29 +49,6 @@ Proof.
   unfold gen_fresh.
 Admitted.
 
-(* substitution *)
-Fixpoint lift n k nt : tm :=
-  match nt with
-  | tm_rel i => if Nat.leb k i then tm_rel (n + i) else tm_rel i
-  | tm_app t1 t2 => tm_app (lift n k t1) (lift n k t2)
-  | tm_abs x T b => tm_abs x T (lift n (S k) b)
-  | tm_true => tm_true
-  | tm_false => tm_false
-  | tm_oops => tm_oops end.
-
-Notation lift0 n := (lift n 0).
-Definition up := lift 1 0.
-
-Fixpoint closedn k nt : bool :=
-  match nt with
-  | tm_rel i => Nat.ltb i k 
-  | tm_app t1 t2 => closedn k t1 && closedn k t2
-  | tm_abs x T b => closedn (S k) b
-  | tm_oops => false
-  | _ => true end.
-
-Notation closed t := (closedn 0 t).
-
 Fixpoint csubst k s t : tm :=
   match t with
   | tm_rel n => if (k =? n)%nat then s else tm_rel n
@@ -80,18 +57,6 @@ Fixpoint csubst k s t : tm :=
   | tm_true => tm_true
   | tm_false => tm_false
   | tm_oops => tm_oops end.
-
-Lemma csubst_closed k v t : closedn k t -> csubst k v t = t.
-Proof.
-  revert k. induction t; intros k' Hcl; inversion Hcl.
-  - apply ltb_lt, lt_neq, neq_sym, eqb_neq in H0.
-    simpl. rewrite H0. reflexivity.
-  - apply andb_true_iff in H0 as [Hcl1 Hcl2]. simpl.
-    rewrite (IHt1 k' Hcl1), (IHt2 k' Hcl2). reflexivity.
-  - simpl. rewrite (IHt (S k') H0). reflexivity.
-  - reflexivity.
-  - reflexivity.
-Qed.
 
 Inductive eval : tm -> tm -> Prop :=
   | EN_Abs : forall x T b,
@@ -248,31 +213,4 @@ Proof with (eauto using BigStepPIR.eval).
     apply ev_l. apply ev_v2. apply ev_s.
   - exists t'. eexists. subst...
   - exists t'. eexists. subst...
-Qed.
-
-Theorem allowed_shadowing Γ :
-  let nt := tm_abs "x" Ty_Bool 
-              (tm_abs "x" Ty_Bool (tm_rel 0)) in
-  let pt := LamAbs "x" (Ty_Builtin DefaultUniBool) 
-              (LamAbs "x" (Ty_Builtin DefaultUniBool) (Var "x")) in
-  translatesTo Γ nt pt.
-Proof.
-  intros. unfold nt, pt.
-  apply tlt_abs. apply tlty_bool.
-  apply tlt_abs. apply tlty_bool.
-  apply tlt_rel. apply find_index_first.
-Qed.
-
-Theorem disallowed_shadowing Γ n :
-  n > 0 ->
-  let nt := tm_abs "x" Ty_Bool 
-              (tm_abs "x" Ty_Bool (tm_rel n)) in
-  let pt := LamAbs "x" (Ty_Builtin DefaultUniBool) 
-              (LamAbs "x" (Ty_Builtin DefaultUniBool) (Var "x")) in
-  ~ translatesTo (Γ ++ ["x"]) nt pt.
-Proof.
-  unfold not. intros Hn tlt. 
-  invs tlt. invs H6. invs H8. 
-  apply find_index_Some_first in H3. 
-  apply lt_neq, neq_sym in Hn. contradiction. 
 Qed.
