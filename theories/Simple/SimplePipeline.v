@@ -6,7 +6,7 @@ From VTL.Simple Require Import DBToPIR.
 From VTL.Semantics Require Import BigStepPIR.
 
 (* A end-to-end pipeline from Coq/Gallina terms to PIR terms (with bogus types):
-   Gallina ▷ PCUIC ▷ λ□/EAst (without box type annotations) ▷ DB ▷ PIR *)
+   Gallina ▷ TemplateRocq ▷ PCUIC ▷ λ□/EAst (without box type annotations) ▷ DB ▷ PIR *)
 
 Import Common.Transform.Transform.
 #[local] Obligation Tactic := program_simpl.

@@ -12,6 +12,8 @@ From MetaCoq.SafeChecker Require Import PCUICWfEnvImpl.
 From VTL Require PIR BigStepPIR.
 From VTL Require Import Translation.
 
+(* Verified PIR extraction: Gallina ▷ PCUIC ▷ λ□T ▷ PIR *)
+
 From Coq.Strings Require Import String.
 Import MCMonadNotation ListNotations.
 
@@ -86,6 +88,7 @@ Definition compile_pir (t : Ast.term) : TemplateMonad PIR.term :=
     end
   end.
 
+(* Check run (typed_erasure_pipeline typed_erasure_config [] ([], )). *)
 MetaCoq Run (tmQuote gal_id >>= compile_pir >>= tmEval cbn >>= tmPrint).
 
 MetaCoq Erase -typed gal_id.
