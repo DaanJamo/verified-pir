@@ -19,13 +19,6 @@ Inductive tm : Type :=
   | tm_false : tm
   | tm_oops  : tm.
 
-Inductive translatesTypeTo : ty -> PIR.ty -> Prop :=
-  | tlty_bool  : translatesTypeTo Ty_Bool (PIR.Ty_Builtin DefaultUniBool)
-  | tlty_arrow : forall ty1 ty2 ty1' ty2',
-      translatesTypeTo ty1 ty1' ->
-      translatesTypeTo ty2 ty2' ->
-      translatesTypeTo (Ty_Arrow ty1 ty2) (PIR.Ty_Fun ty1' ty2').
-
 From MetaCoq.Utils Require Import utils.
 Import MCMonadNotation.
 
@@ -49,6 +42,36 @@ Proof.
   unfold gen_fresh.
 Admitted.
 
+Fixpoint translate_type ty : option PIR.ty :=
+  match ty with
+  | Ty_Bool => Some (PIR.Ty_Builtin DefaultUniBool)
+  | Ty_Arrow ty1 ty2 => 
+      ty1' <- translate_type ty1 ;;
+      ty2' <- translate_type ty2 ;;
+      Some (PIR.Ty_Fun ty1' ty2') 
+  | Ty_ERROR => None
+  end.
+
+Fixpoint translate_term (Γ : list string) tm : option term :=
+  match tm with
+  | tm_rel k => 
+      match nth_error Γ k with
+      | Some x => Some (Var x)
+      | None => None end
+  | tm_app tm1 tm2 => 
+    tm1' <- translate_term Γ tm1 ;;
+    tm2' <- translate_term Γ tm2 ;;
+    Some (Apply tm1' tm2')
+  | tm_abs x ty b =>
+      let x' := (gen_fresh x Γ) in
+      ty' <- translate_type ty ;;
+      b' <- translate_term (x'::Γ) b ;;
+      Some (LamAbs x' ty' b')
+  | tm_true => Some (Constant (ValueOf DefaultUniBool true))
+  | tm_false => Some (Constant (ValueOf DefaultUniBool false))
+  | tm_oops => None 
+  end.
+
 Fixpoint csubst k s t : tm :=
   match t with
   | tm_rel n => if (k =? n)%nat then s else tm_rel n
@@ -69,6 +92,13 @@ Inductive eval : tm -> tm -> Prop :=
   | EN_True  : eval tm_true tm_true
   | EN_False : eval tm_false tm_false.
 
+Inductive translatesTypeTo : ty -> PIR.ty -> Prop :=
+  | tlty_bool  : translatesTypeTo Ty_Bool (PIR.Ty_Builtin DefaultUniBool)
+  | tlty_arrow : forall ty1 ty2 ty1' ty2',
+      translatesTypeTo ty1 ty1' ->
+      translatesTypeTo ty2 ty2' ->
+      translatesTypeTo (Ty_Arrow ty1 ty2) (PIR.Ty_Fun ty1' ty2').
+
 Inductive translatesTo (Γ : list string) : tm -> term -> Prop :=
   | tlt_rel : forall n x, 
       find_index Γ x = Some n -> 
@@ -83,6 +113,52 @@ Inductive translatesTo (Γ : list string) : tm -> term -> Prop :=
       translatesTo Γ (tm_app t1 t2) (Apply t1' t2')
   | tlt_true : translatesTo Γ tm_true (Constant (ValueOf DefaultUniBool true))
   | tlt_false : translatesTo Γ tm_false (Constant (ValueOf DefaultUniBool false)).
+
+Theorem translate_type_reflect : forall ty ty',
+  translate_type ty = Some ty' <-> translatesTypeTo ty ty'.
+Proof.
+  intros ty ty'; split.
+  - revert ty'. induction ty; intros ty' tl_ty.
+    + inversion tl_ty. apply tlty_bool.
+    + inversion tl_ty as [Hty].
+      destruct (translate_type ty1) as [ty1'|]; try discriminate.
+      destruct (translate_type ty2) as [ty2'|]; try discriminate.
+      specialize (IHty1 ty1' Logic.eq_refl).
+      specialize (IHty2 ty2' Logic.eq_refl).
+      inversion Hty as [Hty']. 
+      apply (tlty_arrow ty1 ty2 ty1' ty2' IHty1 IHty2).
+    + discriminate.
+  - intros tl_ty. induction tl_ty.
+    + auto.
+    + simpl. rewrite IHtl_ty1, IHtl_ty2. reflexivity.
+Qed.
+
+(* NoDup -> no shadowing up to now *)
+Theorem tl_in_tlt : forall Γ t t',
+  NoDup Γ ->
+  translate_term Γ t = Some t' -> translatesTo Γ t t'.
+Proof.
+  intros Γ t. revert Γ. induction t;
+  intros Γ t' nodup tl; inversion tl.
+  - destruct (nth_error Γ n) eqn:Hnth; [|discriminate].
+    inversion H0. apply tlt_rel.
+    now apply nth_error_to_find_index in Hnth.
+  - destruct (translate_term Γ t1) eqn:Ht1; [|discriminate].
+    destruct (translate_term Γ t2) eqn:Ht2; [|discriminate].
+    inversion H0.
+    specialize (IHt1 Γ t0 nodup Ht1).
+    specialize (IHt2 Γ t3 nodup Ht2).
+    now apply tlt_app.
+  - destruct (translate_type t0) eqn:Hty; [|discriminate].
+    destruct (translate_term (gen_fresh s Γ :: Γ) t1) eqn:Hb; [|discriminate].
+    inversion H0. assert (Hnodup' : NoDup (gen_fresh s Γ :: Γ)).
+    apply NoDup_cons. apply gen_fresh_fresh. assumption.
+    specialize (IHt ((gen_fresh s Γ)::Γ) t3 Hnodup' Hb).
+    apply translate_type_reflect in Hty as Hty'.
+    now apply tlt_abs.
+  - apply tlt_true.
+  - apply tlt_false.
+Qed.
 
 Lemma weaken_ctx : forall Γ x t t',
   translatesTo Γ t t' ->
@@ -194,13 +270,13 @@ Qed.
 
 Theorem translate_correct : forall t v t',
   eval t v ->
-  translatesTo [] t t' ->
+  translate_term [] t = Some t' ->
   exists v' k,
     translatesTo [] v v' /\
     BigStepPIR.eval t' v' k.
 Proof with (eauto using BigStepPIR.eval).
-  intros t v t'' evn. revert t''; induction evn; 
-  intros t' tln_t; inversion tln_t.
+  intros t v t'' evn tl. apply tl_in_tlt in tl; try apply NoDup_nil. 
+  revert t'' tl; induction evn; intros t' tlt; inversion tlt.
   - exists t'. eexists. subst...
   - subst.
     destruct (IHevn1 t1' H1) as [v1' [k1 [tlt_l ev_l]]].

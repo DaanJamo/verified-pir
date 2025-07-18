@@ -438,3 +438,26 @@ Proof.
         inversion H3; contradiction.
         apply H2.
 Qed.
+
+Lemma nth_error_to_find_index : forall l x n,
+  NoDup l ->
+  nth_error l n = Some x ->
+  find_index l x = Some n.
+Proof.
+  induction l; intros x n Hnd Hnth.
+  - rewrite nth_error_nil in Hnth.
+    discriminate.
+  - unfold find_index in *. simpl in *.
+    destruct n.
+    + simpl in Hnth. inversion Hnth.
+      now rewrite eqb_refl.
+    + destruct_str_eq a x.
+      * subst. rewrite nth_error_cons_succ in Hnth.
+        apply nth_error_In in Hnth as Hin.
+        apply NoDup_cons_iff in Hnd as [Hcontra _].
+        contradiction.
+      * apply NoDup_cons_iff in Hnd as [HnIn Hnd'].
+        rewrite nth_error_cons_succ in Hnth.
+        specialize (IHl x n Hnd' Hnth).
+        now apply find_index'_acc_succ in IHl.
+Qed.
