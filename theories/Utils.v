@@ -44,6 +44,35 @@ Proof.
   inversion H3.
 Qed.
 
+Lemma existsb_In : forall x l,
+  existsb (eqb x) l = true <-> In x l.
+Proof.
+  split; intros.
+  - induction l.
+    + inversion H.
+    + destruct_str_eq x a.
+      * now left.
+      * right. apply IHl.
+        simpl in H. rewrite Heqb in H.
+        now inversion H.
+  - induction l.
+    + inversion H.
+    + simpl. destruct_str_eq x a.
+      * auto.
+      * simpl. apply IHl. 
+        simpl in H. inversion H.
+        symmetry in H0. contradiction.
+        assumption.
+Qed.
+
+Lemma existsb_not_In : forall x l,
+  existsb (eqb x) l = false <-> ~ In x l.
+Proof.
+  split; intros;
+  try apply not_true_is_false;
+  unfold not; intros; now apply existsb_In in H0.
+Qed.
+
 Lemma length_pred_middle : forall {A} (l1 l2 : list A) x n,
   length l1 < n ->
   n < length (l1 ++ x :: l2) ->
