@@ -10,7 +10,7 @@ From MetaCoq.TemplatePCUIC Require Import TemplateToPCUIC.
 From MetaCoq.SafeChecker Require Import PCUICWfEnvImpl.
 
 From VTL Require PIR BigStepPIR.
-From VTL Require Import Translation.
+From VTL Require Import Translation Subset.
 
 (* Verified PIR extraction: Gallina ▷ PCUIC ▷ λ□T ▷ PIR *)
 
@@ -32,14 +32,14 @@ Definition pir_program := (unit * PIR.term).
 Definition eval_pir_program (p' : pir_program) (t' : PIR.term) :=
   BigStepPIR.eval p'.2 t' 5000.
 
-Definition prog  : eprogram := ([], EAst.tBox).
-Definition prog' : pir_program := (tt, PIR.Var "x"%string).
-
-Definition always  (p  : eprogram)    : Prop := True.
-Definition always' (p' : pir_program) : Prop := True.
-Definition trust (p : eprogram) (pre : always p) := True.
-
-Definition nom (p : eprogram) : always p -> pir_program := fun _ => (tt, PIR.Var "x"%string).
+(* add lemma sub => exists t', tl t = Some t'*)
+Definition translate_program (p : eprogram) (sub : InSubset [] p.2) := 
+  fun ann => let t' := 
+    match translate_term remap_env [] p.2 ann with
+    | Some t'' => t''
+    | None => PIR.Error (PIR.UNDEFINED "not in subset")
+    end in
+  (tt, t').
 
 (* Record
 t (env env' term term' value value' : Type) (eval : program env term -> value -> Prop)
@@ -51,27 +51,30 @@ t (env env' term term' value value' : Type) (eval : program env term -> value ->
   obseq : forall p : program env term, pre p -> program env' term' -> value -> value' -> Prop;
   preservation : preserves_eval pre transform obseq }. *)
 
+Locate eval_eprogram.
 Program Definition box_to_pir_transform_test : 
   Transform.t global_context unit EAst.term PIR.term EAst.term PIR.term
   (eval_eprogram default_wcbv_flags)
   (eval_pir_program) := 
   {| name := "translate lambda box terms into PIR terms";
-     pre p := always p;
-     transform p pre := nom p pre;
-     post p' := always' p';
-     correctness p pre := _;
-     obseq p Hp p' _ _ := _;
+     pre p := InSubset [] p.2;
+     transform p pre := translate_program p pre _;
+     post _ := True;
+     correctness p pre := I;
+     obseq p Hp p' v v' := translatesTo remap_env [] v _ v';
      preservation := _
   |}.
 Next Obligation.
-  unfold always in Hp. Admitted.
+Admitted.
 Next Obligation.
-  Admitted.
+Admitted.
+Next Obligation.
+Admitted.
 
 Definition run_transform (t : EAst.term) :=
   run box_to_pir_transform_test ([], t).
 
-Eval cbv in (run_transform EAst.tBox I).
+Eval cbv in (run_transform EAst.tBox _).
 
 Definition template_to_lt (t : Ast.term) : TemplateMonad (∑ et : EAst.term, annots box_type et) :=
   match t with

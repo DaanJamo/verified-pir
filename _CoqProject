@@ -11,5 +11,6 @@ theories/Translation.v
 theories/Utils.v
 
 theories/Simple/NamedToPIR.v
+theories/Simple/EAstToDB.v
 theories/Simple/DBToPIR.v
 theories/Simple/SimplePipeline.v

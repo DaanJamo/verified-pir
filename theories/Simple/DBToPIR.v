@@ -101,6 +101,12 @@ Fixpoint translate_term (Γ : list string) tm : option term :=
   | tm_oops => None 
   end.
 
+Definition translate_unsafe t := 
+  match translate_term [] t with
+  | Some t' => t'
+  | None => Error (UNDEFINED "translation error")
+  end.
+
 Fixpoint csubst k s t : tm :=
   match t with
   | tm_rel n => if (k =? n)%nat then s else tm_rel n
