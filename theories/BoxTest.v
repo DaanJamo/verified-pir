@@ -1,6 +1,7 @@
 From MetaCoq.Utils Require Import utils.
 From MetaCoq.Template Require Import Ast.
-From MetaCoq.Template Require Import Loader.
+(* From MetaCoq.Template Require Import Loader. *)
+From MetaCoq.TemplatePCUIC Require Import Loader.
 From MetaCoq.ErasurePlugin Require Import Erasure.
 From MetaCoq.ErasurePlugin Require Import Loader.
 From MetaCoq.Erasure.Typed Require Import Annotations TypeAnnotations.
@@ -57,19 +58,221 @@ Check annot_extract_template_env_within_coq_sig.
   Eval cbv in (erase_type_of_program eid). *)
 
 Definition eid := (fun (x : nat) => x).
-MetaCoq Quote Recursively Definition t := eid.
+(* MetaCoq Quote Recursively Definition t := eid. *)
+Definition t := <# eid #>.
 Eval cbv in (t.1).
 
-Definition kn_t : kername := (MPfile ["BoxTest"; "VTL"], "eid").
+Definition kn_eid : kername := (MPfile ["BoxTest"; "VTL"], "eid").
+Definition Σ_eid := t.1.
 
-Definition kns := KernameSet.union (KernameSet.singleton kn_t) (KernameSet.singleton (MPfile ["Datatypes"; "Init"; "Coq"], "nat")).
-Eval vm_compute in extract_template_env_within_coq t.1 kns (fun _ => true).
+Definition kns :=
+  KernameSet.union (KernameSet.singleton kn_eid) (KernameSet.singleton (MPfile ["Datatypes"; "Init"; "Coq"], "nat")).
+
+Definition pcuic_params :=
+    {|
+      optimize_prop_discr := true;
+      extract_transforms :=
+        [dearg_transform (fun _ : kername => None) true true true true true]
+    |}
+.
+
+Definition eid_global_env_pcuic : PCUICAst.PCUICEnvironment.global_env
+  := Σ_eid.1.(MetaCoq.PCUIC.PCUICProgram.trans_env_env).
+
+Eval cbv in
+  check_wf_env_func
+    extract_within_coq
+    eid_global_env_pcuic
+    .
+
+Definition Σ_wf := assume_env_wellformed eid_global_env_pcuic.
+
+Eval vm_compute in
+  extract_pcuic_env
+    pcuic_params
+    eid_global_env_pcuic
+    Σ_wf
+    (KernameSet.singleton kn_eid)
+    (fun _ => true).
+
+
+Definition nat_quoted :=
+                  PCUICAst.PCUICEnvironment.InductiveDecl
+                    {|
+                      ExtractionCorrectness.PEnv.ind_finite := Finite;
+                      ExtractionCorrectness.PEnv.ind_npars := 0;
+                      ExtractionCorrectness.PEnv.ind_params := [];
+                      ExtractionCorrectness.PEnv.ind_bodies :=
+                        [{|
+                           ExtractionCorrectness.PEnv.ind_name := "nat";
+                           ExtractionCorrectness.PEnv.ind_indices := [];
+                           ExtractionCorrectness.PEnv.ind_sort :=
+                             sType
+                               {|
+                                 t_set :=
+                                   {|
+                                     LevelExprSet.this := [(Level.lzero, 0)];
+                                     LevelExprSet.is_ok :=
+                                       LevelExprSet.Raw.singleton_ok
+                                         (Level.lzero, 0)
+                                   |};
+                                 t_ne := eq_refl
+                               |};
+                           ExtractionCorrectness.PEnv.ind_type :=
+                             PCUICAst.tSort
+                               (sType
+                                  {|
+                                    t_set :=
+                                      {|
+                                        LevelExprSet.this :=
+                                          [(Level.lzero, 0)];
+                                        LevelExprSet.is_ok :=
+                                          LevelExprSet.Raw.singleton_ok
+                                            (Level.lzero, 0)
+                                      |};
+                                    t_ne := eq_refl
+                                  |});
+                           ExtractionCorrectness.PEnv.ind_kelim := IntoAny;
+                           ExtractionCorrectness.PEnv.ind_ctors :=
+                             [{|
+                                ExtractionCorrectness.PEnv.cstr_name := "O";
+                                ExtractionCorrectness.PEnv.cstr_args := [];
+                                ExtractionCorrectness.PEnv.cstr_indices := [];
+                                ExtractionCorrectness.PEnv.cstr_type :=
+                                  PCUICAst.tRel 0;
+                                ExtractionCorrectness.PEnv.cstr_arity := 0
+                              |};
+                              {|
+                                ExtractionCorrectness.PEnv.cstr_name := "S";
+                                ExtractionCorrectness.PEnv.cstr_args :=
+                                  [{|
+                                     decl_name :=
+                                       {|
+                                         binder_name := nAnon;
+                                         binder_relevance := Relevant
+                                       |};
+                                     decl_body := None;
+                                     decl_type := PCUICAst.tRel 0
+                                   |}];
+                                ExtractionCorrectness.PEnv.cstr_indices := [];
+                                ExtractionCorrectness.PEnv.cstr_type :=
+                                  PCUICAst.tProd
+                                    {|
+                                      binder_name := nAnon;
+                                      binder_relevance := Relevant
+                                    |} (PCUICAst.tRel 0)
+                                    (PCUICAst.tRel 1);
+                                ExtractionCorrectness.PEnv.cstr_arity := 1
+                              |}];
+                           ExtractionCorrectness.PEnv.ind_projs := [];
+                           ExtractionCorrectness.PEnv.ind_relevance :=
+                             Relevant
+                         |}];
+                      ExtractionCorrectness.PEnv.ind_universes :=
+                        Monomorphic_ctx;
+                      ExtractionCorrectness.PEnv.ind_variance := None
+                    |}
+                    .
+
+Require Import Strings.String.
+Open Scope string_scope.
+
+
+
+(* TODO: DEBUGGING erase_global_decl on nat global decl *)
+
+Definition nat_kn :=
+  (MPfile ["Datatypes"%bs; "Init"%bs; "Coq"%bs], "nat"%bs).
+
+Definition nat_global_decl :=
+             InductiveDecl
+               {|
+                 TemplateToPCUICCorrectness.S.Env.ind_finite := Finite;
+                 TemplateToPCUICCorrectness.S.Env.ind_npars := 0;
+                 TemplateToPCUICCorrectness.S.Env.ind_params := [];
+                 TemplateToPCUICCorrectness.S.Env.ind_bodies :=
+                   [{|
+                      TemplateToPCUICCorrectness.S.Env.ind_name := "nat"%bs;
+                      TemplateToPCUICCorrectness.S.Env.ind_indices := [];
+                      TemplateToPCUICCorrectness.S.Env.ind_sort :=
+                        sType
+                          {|
+                            t_set :=
+                              {|
+                                LevelExprSet.this := [(Level.lzero, 0)];
+                                LevelExprSet.is_ok :=
+                                  LevelExprSet.Raw.singleton_ok
+                                    (Level.lzero, 0)
+                              |};
+                            t_ne := eq_refl
+                          |};
+                      TemplateToPCUICCorrectness.S.Env.ind_type :=
+                        tSort
+                          (sType
+                             {|
+                               t_set :=
+                                 {|
+                                   LevelExprSet.this := [(Level.lzero, 0)];
+                                   LevelExprSet.is_ok :=
+                                     LevelExprSet.Raw.singleton_ok
+                                       (Level.lzero, 0)
+                                 |};
+                               t_ne := eq_refl
+                             |});
+                      TemplateToPCUICCorrectness.S.Env.ind_kelim := IntoAny;
+                      TemplateToPCUICCorrectness.S.Env.ind_ctors :=
+                        [{|
+                           TemplateToPCUICCorrectness.S.Env.cstr_name :=
+                             "O"%bs;
+                           TemplateToPCUICCorrectness.S.Env.cstr_args := [];
+                           TemplateToPCUICCorrectness.S.Env.cstr_indices :=
+                             [];
+                           TemplateToPCUICCorrectness.S.Env.cstr_type :=
+                             tRel 0;
+                           TemplateToPCUICCorrectness.S.Env.cstr_arity := 0
+                         |};
+                         {|
+                           TemplateToPCUICCorrectness.S.Env.cstr_name :=
+                             "S"%bs;
+                           TemplateToPCUICCorrectness.S.Env.cstr_args :=
+                             [{|
+                                decl_name :=
+                                  {|
+                                    binder_name := nAnon;
+                                    binder_relevance := Relevant
+                                  |};
+                                decl_body := None;
+                                decl_type := tRel 0
+                              |}];
+                           TemplateToPCUICCorrectness.S.Env.cstr_indices :=
+                             [];
+                           TemplateToPCUICCorrectness.S.Env.cstr_type :=
+                             tProd
+                               {|
+                                 binder_name := nAnon;
+                                 binder_relevance := Relevant
+                               |} (tRel 0) (tRel 1);
+                           TemplateToPCUICCorrectness.S.Env.cstr_arity := 1
+                         |}];
+                      TemplateToPCUICCorrectness.S.Env.ind_projs := [];
+                      TemplateToPCUICCorrectness.S.Env.ind_relevance :=
+                        Relevant
+                    |}];
+                 TemplateToPCUICCorrectness.S.Env.ind_universes :=
+                   Monomorphic_ctx;
+                 TemplateToPCUICCorrectness.S.Env.ind_variance := None
+               |}
+.
+
+Definition nat_env_ext := t.1.
+
+
 
 Definition get_pair_of_first_constant (env : result ExAst.global_env string) :=
   match env with
-  | Ok decls => 
+  | Ok decls =>
       match decls with
-      | (((kn, deps), decl) :: _) => 
+      | (((kn, deps), decl) :: _) =>
           match decl with
           | ExAst.ConstantDecl cst =>
             match cst.(ExAst.cst_body) with
