@@ -1,12 +1,13 @@
 From Coq Require Import Program.
 From MetaCoq.Utils Require Import utils.
 From MetaCoq.Common Require Import BasicAst Transform config.
-From MetaCoq.Template Require Import TemplateMonad Loader.
+From MetaCoq.Template Require Import Loader TemplateMonad.
 From MetaCoq.Erasure Require Import EAst EProgram EWcbvEval.
-From MetaCoq.ErasurePlugin Require Import Erasure Loader.
+From MetaCoq.ErasurePlugin Require Import Erasure.
 
 From VTL.Simple Require Import EAstToDB DBToPIR.
 From VTL.Semantics Require Import BigStepPIR.
+From VTL Require Import Pretty.
 
 (* A end-to-end pipeline from Coq/Gallina terms to PIR terms (with bogus types):
    Gallina ▷ TemplateRocq ▷ PCUIC ▷ λ□/EAst (without box type annotations) ▷ DB ▷ PIR *)
@@ -134,6 +135,10 @@ Axiom assume_translatable : forall p, pre simple_pipeline ([], p).
 Definition compile_pir (p : Ast.Env.program) : PIR.term :=
   (run simple_pipeline ([], p) (assume_translatable p)).2.
 
-Eval vm_compute in <# (fun (x : bool) => x) true #>.
-Eval vm_compute in (run erasure_pipeline_mapping ([], <# (fun (x : bool) => x) true #>)) _.
+Definition translate_and_print_pir_program (p : Ast.Env.program) :=
+  print_as_program (compile_pir p).
+
+(* Eval vm_compute in <# (fun (x : bool) => x) true #>.
+Eval vm_compute in (run erasure_pipeline_mapping ([], <# (fun (x : bool) => x) true #>) _).
 Eval vm_compute in compile_pir <# (fun (x : bool) => x) true #>.
+Eval vm_compute in translate_and_print_pir_program <# (fun (x : bool) => x) true #>. *)

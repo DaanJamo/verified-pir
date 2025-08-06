@@ -31,4 +31,4 @@ Fixpoint translate_et (Γ : list bs) t : option tm :=
   end.
 
 Definition tru := (tLambda (nNamed "t"%bs) (tLambda (nNamed "f"%bs) (tRel 0))).
-Eval cbv in translate_et [] tru.
+(* Eval cbv in translate_et [] tru. *)
