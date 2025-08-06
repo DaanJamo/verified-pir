@@ -136,7 +136,7 @@ Inductive translatesTypeTo : ty -> PIR.ty -> Prop :=
 
 Inductive translatesTo (Γ : list string) : tm -> term -> Prop :=
   | tlt_rel : forall n x, 
-      find_index Γ x = Some n -> 
+      find_index_string Γ x = Some n -> 
       translatesTo Γ (tm_rel n) (Var x)
   | tlt_abs : forall x x' ty ty' b b',
       translatesTypeTo ty ty' ->
@@ -257,7 +257,8 @@ Lemma strengthen_shadowed_ctx : forall Γ x b b',
 Proof.
   intros Γ x b. revert Γ. induction b;
   intros Γ b' Hin tlt; inversion tlt; subst.
-  - apply tlt_rel. 
+  - apply tlt_rel.
+    unfold find_index_string in H0.
     destruct_str_eq x x0.
     + subst. now rewrite find_index_app1 in H0.
     + rewrite find_index_app1 in H0. auto.
@@ -286,6 +287,7 @@ Proof.
       now eapply weaken_ctx_many in tlt_v.
     + apply find_index_not_outer in H0 as Hin; auto.
       apply find_index_not_outer_length in H0 as Hl; auto.
+      unfold find_index_string in H0.
       rewrite find_index_app1 in H0; auto. rewrite Hl.
       now apply tlt_rel.
   - simpl. apply tlt_app.

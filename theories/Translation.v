@@ -5,7 +5,7 @@ From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
 From MetaCoq.Erasure Require Import EAst EAstUtils.
 From MetaCoq.Utils Require Import MCList MCString MCPrelude utils.
 
-From VTL Require Import Env PIR.
+From VTL Require Import Env PIR Utils.
 
 From Coq Require Import String BinInt List.
 
@@ -36,6 +36,8 @@ Section translate.
 
 Context (TT : env PIR.ty).
 (* TODO: extend with context to get fresh variable names *)
+
+(* Print find_index_bs. *)
 
 Definition translate_ty : box_type -> option PIR.ty :=
   fix go (ty : box_type) :=

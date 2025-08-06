@@ -159,7 +159,14 @@ Proof.
       apply PeanoNat.lt_S_n in Hl. apply Hl.
 Qed.
 
-Fixpoint find_index' (Γ : list string) x acc : option nat :=
+Section find_index.
+
+Context {A : Type}.
+Context `{RE : ReflectEq A}.
+
+Import ReflectEq.
+
+Fixpoint find_index' (Γ : list A) x acc : option nat :=
   match Γ with
   | [] => None
   | h :: tl => if eqb h x then Some acc else find_index' tl x (S acc)
@@ -227,11 +234,12 @@ Lemma find_index_first_index : forall l x y,
   x = y.
 Proof.
   intros.
-  destruct_str_eq x y.
+  destruct (eqb_spec x y).
   + assumption.
-  + unfold find_index in H. simpl in H. rewrite Heqb in H. 
+  + unfold find_index in H. simpl in H. 
+    apply neqb, ssrbool.negbTE in H0. rewrite H0 in H.
     now apply find_index'_n_min_acc in H.
-Qed. 
+Qed.
 
 Lemma find_index_Some_single : forall x y n,
   find_index [x] y = Some n ->
@@ -269,8 +277,8 @@ Lemma find_index_cons_other : forall l a x n,
   find_index l x = Some n ->
   find_index (a :: l) x = Some (S n).
 Proof.
-  intros l a x n Hneq Hfi. unfold find_index. 
-  apply eqb_neq in Hneq. simpl. rewrite Hneq.
+  intros l a x n Hneq Hfi. unfold find_index. simpl.
+  apply neqb, ssrbool.negbTE in Hneq. rewrite Hneq.
   now apply find_index'_acc_succ in Hfi.
 Qed.
 
@@ -299,12 +307,13 @@ Proof.
   induction l; intros.
   - unfold find_index in H. simpl in H.
     discriminate H.
-  - destruct_str_eq a x.
+  - destruct (eqb_spec a x) as [Heq | Hneq].
     + subst. apply find_index_Some_first in H.
       subst. now eapply find_index_first_index.
     + unfold find_index in *. simpl in *.
-      rewrite Heqb in H.
-      destruct_str_eq a y.
+      apply neqb, ssrbool.negbTE in Hneq.
+      rewrite Hneq in H.
+      destruct (eqb_spec a y).
       * inversion H0. subst.
         apply find_index'_n_min_acc in H. lia.
       * specialize (IHl x y (pred n)).
@@ -320,7 +329,7 @@ Proof.
   intros l1 l2 x Hin. unfold find_index.
   generalize 0 as acc. induction l1; intros acc.
   + inversion Hin.
-  + simpl in *. destruct_str_eq a x.
+  + simpl in *. destruct (eqb_spec a x).
     * reflexivity.
     * inversion Hin. contradiction.
       now apply IHl1.
@@ -334,7 +343,7 @@ Proof.
   intros l1 l2 x. induction l1; intros.
   - now rewrite Nat.add_0_r.
   - simpl in *. apply Decidable.not_or in H as [Hax Hin].
-    apply eqb_neq in Hax. rewrite Hax in H0.
+    apply neqb, ssrbool.negbTE in Hax. rewrite Hax in H0.
     specialize (IHl1 (S acc) n Hin H0).
     now replace (acc + S (length l1)) with (S acc + length l1) by lia.
 Qed.
@@ -349,7 +358,7 @@ Proof.
   - simpl in *. now rewrite Nat.sub_0_r.
   - apply not_in_cons in Hnin as [Hneq Hnin].
     simpl in *. assert (a <> x) by auto.
-    apply eqb_neq in H. rewrite H in Hfi.
+    apply neqb, ssrbool.negbTE in H. rewrite H in Hfi.
     apply IHl1 in Hfi. apply find_index'_acc_succ.
     apply find_index'_n_min_acc in Hfi as Hl.
     rewrite Hfi. f_equal. lia. apply Hnin.
@@ -456,9 +465,10 @@ Proof.
   unfold find_index. generalize 0 as acc. 
   induction l1; intros acc H.
   - now right.
-  - destruct_str_eq a x.
+  - destruct (eqb_spec a x) as [Heq | Hneq].
     + left. now left.
-    + simpl in H. rewrite Heqb in H.
+    + simpl in H. apply neqb in Hneq as Hneqb. 
+      apply ssrbool.negbTE in Hneqb. rewrite Hneqb in H.
       inversion Hin. contradiction.
       apply IHl1 in H; auto. inversion H.
       * left. now right.
@@ -480,7 +490,7 @@ Proof.
     destruct n.
     + simpl in Hnth. inversion Hnth.
       now rewrite eqb_refl.
-    + destruct_str_eq a x.
+    + destruct (eqb_spec a x).
       * subst. rewrite nth_error_cons_succ in Hnth.
         apply nth_error_In in Hnth as Hin.
         apply NoDup_cons_iff in Hnd as [Hcontra _].
@@ -490,3 +500,17 @@ Proof.
         specialize (IHl x n Hnd' Hnth).
         now apply find_index'_acc_succ in IHl.
 Qed.
+
+End find_index.
+
+#[global, program] Instance reflect_string : ReflectEq string := {
+  eqb := eqb
+}.
+Next Obligation.
+  induction (eqb_spec x y);
+  now constructor.
+Qed.
+
+Definition find_index_string := @find_index string reflect_string.
+Check find_index_string.
+Definition find_index_bs := @find_index bytestring.string StringOT.reflect_eq_string.
