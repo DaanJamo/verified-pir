@@ -501,6 +501,17 @@ Proof.
         now apply find_index'_acc_succ in IHl.
 Qed.
 
+Lemma find_index_to_nth_error : forall l x n,
+  find_index l x = Some n ->
+  nth_error l n = Some x.
+Proof.
+  induction l; intros x n Hfi.
+  - discriminate.
+  - destruct n; simpl in *.
+    + now apply find_index_first_index in Hfi.
+    + now apply find_index_cons_succ in Hfi.
+Qed.
+
 End find_index.
 
 #[global, program] Instance reflect_string : ReflectEq string := {
@@ -512,5 +523,51 @@ Next Obligation.
 Qed.
 
 Definition find_index_string := @find_index string reflect_string.
-Check find_index_string.
 Definition find_index_bs := @find_index bytestring.string StringOT.reflect_eq_string.
+
+Local Open Scope string_scope.
+
+Fixpoint gen_fresh_aux x (Γ : list string) n :=
+  match n with
+  | 0 => x
+  | S n' => if existsb (eqb x) Γ
+      then gen_fresh_aux (x ++ "'") Γ n' else x
+  end.
+
+Definition gen_fresh x (Γ : list string) :=
+  gen_fresh_aux x Γ #|Γ|.
+
+Definition gen_fresh_next : forall x Γ,
+  ~ In x Γ ->
+  gen_fresh x Γ = x.
+Proof.
+  intros x Γ Hin.
+  induction Γ.
+  - now cbn.
+  - apply not_in_cons in Hin as [Hx HnIn].
+    apply IHΓ in HnIn as Hgen.
+    apply existsb_not_In in HnIn.
+    apply String.eqb_neq in Hx as Hxb.
+    cbn. now rewrite Hxb, HnIn.
+Qed.
+
+Lemma gen_fresh_extend : forall x Γ1 Γ2,
+  ~ In x Γ1 ->
+  ~ In (gen_fresh x Γ2) Γ2 ->
+  ~ In (gen_fresh x (Γ1 ++ Γ2)) (Γ1 ++ Γ2).
+Proof.
+  intros x Γ1 Γ2 Hx HnIn.
+  induction Γ1.
+  - auto.
+  - apply not_in_cons in Hx as [Hxa Hx].
+    apply String.eqb_neq in Hxa as Hxab.
+    cbn. rewrite Hxab. cbn. admit.
+Admitted.
+
+Lemma gen_fresh_fresh : forall x Γ,
+  ~ (In (gen_fresh x Γ) Γ).
+Proof.
+  induction Γ.
+  - auto.
+  - admit.
+Admitted.

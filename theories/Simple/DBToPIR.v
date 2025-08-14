@@ -25,52 +25,6 @@ Import MCMonadNotation.
 Import Strings.String Nat.
 Local Open Scope string_scope.
 
-(* fresh variable generation *)
-Fixpoint gen_fresh_aux x (Γ : list string) n :=
-  match n with
-  | 0 => x
-  | S n' => if existsb (Strings.String.eqb x) Γ
-      then gen_fresh_aux (x ++ "'") Γ n' else x
-  end.
-
-Definition gen_fresh x (Γ : list string) :=
-  gen_fresh_aux x Γ #|Γ|.
-
-Definition gen_fresh_next : forall x Γ,
-  ~ In x Γ ->
-  gen_fresh x Γ = x.
-Proof.
-  intros x Γ Hin.
-  induction Γ.
-  - now cbn.
-  - apply not_in_cons in Hin as [Hx HnIn].
-    apply IHΓ in HnIn as Hgen.
-    apply existsb_not_In in HnIn.
-    apply String.eqb_neq in Hx as Hxb.
-    cbn. now rewrite Hxb, HnIn.
-Qed.
-
-Lemma gen_fresh_extend : forall x Γ1 Γ2,
-  ~ In x Γ1 ->
-  ~ In (gen_fresh x Γ2) Γ2 ->
-  ~ In (gen_fresh x (Γ1 ++ Γ2)) (Γ1 ++ Γ2).
-Proof.
-  intros x Γ1 Γ2 Hx HnIn.
-  induction Γ1.
-  - auto.
-  - apply not_in_cons in Hx as [Hxa Hx].
-    apply String.eqb_neq in Hxa as Hxab.
-    cbn. rewrite Hxab. cbn. admit.
-Admitted.
-
-Lemma gen_fresh_fresh : forall x Γ,
-  ~ (In (gen_fresh x Γ) Γ).
-Proof.
-  induction Γ.
-  - auto.
-  - admit.
-Admitted.
-
 Fixpoint translate_type ty : option PIR.ty :=
   match ty with
   | Ty_Bool => Some (PIR.Ty_Builtin DefaultUniBool)
@@ -156,8 +110,8 @@ Proof.
   - revert ty'. induction ty; intros ty' tl_ty.
     + inversion tl_ty. apply tlty_bool.
     + inversion tl_ty as [Hty].
-      destruct (translate_type ty1) as [ty1'|]; try discriminate.
-      destruct (translate_type ty2) as [ty2'|]; try discriminate.
+      destruct (translate_type ty1) as [ty1'|]; [|discriminate].
+      destruct (translate_type ty2) as [ty2'|]; [|discriminate].
       specialize (IHty1 ty1' Logic.eq_refl).
       specialize (IHty2 ty2' Logic.eq_refl).
       inversion Hty as [Hty']. 
