@@ -3,7 +3,7 @@ From MetaCoq.Utils Require Import utils.
 From MetaCoq.Common Require Import BasicAst Transform config.
 From MetaCoq.Template Require Import Loader TemplateMonad.
 From MetaCoq.Erasure Require Import EAst EProgram EWcbvEval.
-From MetaCoq.ErasurePlugin Require Import Erasure.
+From MetaCoq.ErasurePlugin Require Import Erasure Loader.
 
 From VTL.Simple Require Import EAstToDB DBToPIR.
 From VTL.Semantics Require Import BigStepPIR.

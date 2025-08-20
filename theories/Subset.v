@@ -133,3 +133,19 @@ Proof.
   - now eapply S_tLambda.
   - now apply S_tApp.
 Qed.
+
+Lemma subset_is_translatable : forall TT Γ t ann_t,
+  InSubset Γ t ->
+  exists t', translate_term TT Γ t ann_t = Some t'.
+Proof.
+  intros TT Γ t ann_t sub. 
+  induction sub; subst.
+  - simpl. eauto.
+  - exists (Var res).
+    simpl. now rewrite H.
+  - destruct ann_t as [t_ty ann_b].
+    destruct (IHsub ann_b) as [b' IHb].
+    simpl. admit.
+  - destruct ann_t as [t_ty [ann_f ann_a]].
+    simpl.
+Admitted.

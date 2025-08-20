@@ -45,30 +45,13 @@ Definition no_check_args :=
        {| optimize_prop_discr := true;
           extract_transforms := [dearg_transform (fun _ => None) true true false false false] |} |}.
 
+Print kername.
 Definition p := (fun (x : nat) => x).
 MetaCoq Quote Recursively Definition qp := p.
 Eval cbv in <%% p %%>.
 
-Import bytestring.
-Locate string.
-Definition cic_to_box_typed (p : Ast.Env.program) :=
-  entry <- match p.2 with
-           | _ => Ok <%% t %%>
-  Σ <- extract_template_env
-         no_check_args
-         p.1
-         (KernameSet.singleton entry)
-         (fun k => false);;
-  Ok Σ.
-
-Definition get_type_env (p : Ast.Env.program) : result ExAst.global_env string :=
-  entry <- match p.2 with
-           | Ast.tConst kn _ => Ok kn
-           | Ast.tInd ind _ => Ok (inductive_mind ind)
-           | _ => Err "Expected program to be a tConst or tInd"
-           end;;
-  Σ <- annot_extract_template_env no_check_args p.1 (KernameSet.singleton entry) (fun kn => false);;
-  Ok Σ.
+Print KernameSet.elt.
+Eval vm_compute in extract_template_env_within_coq qp.1 (KernameSet.singleton <%% nat %%>) (fun _ => false).
 
 (* Record
 t (env env' term term' value value' : Type) (eval : program env term -> value -> Prop)
@@ -100,7 +83,7 @@ Admitted.
 Next Obligation.
 Admitted.
 
-Eval vm_compute in run (east_to_pir_transform_test (tt, identity_EAst) _).
+(* Eval vm_compute in run (east_to_pir_transform_test (empty_context, identity_EAst) _). *)
 MetaCoq Quote Recursively Definition p := bool.
 
 (* Locate Optimize.dearg_transform.
