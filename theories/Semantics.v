@@ -185,10 +185,10 @@ Proof.
     now apply tlt_app.
 Qed.
 
-Theorem stlc_correct : forall
+Theorem stlc_correct : forall Σ
   t (ann_t : annots box_type t) t'
   v (ann_v : annots box_type v),
-  [] e⊢ t ⇓ v ->
+  Σ e⊢ t ⇓ v ->
   InSubset [] t ->
   InSubset [] v ->
   translate_term remap_env [] t ann_t = Some t' ->
@@ -196,20 +196,45 @@ Theorem stlc_correct : forall
     translatesTo remap_env [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros t ann_t t' v ann_v ev sub_t sub_v tlt.
-  apply translate_reflect in tlt; try apply NoDup_nil. 
+  intros Σ t ann_t t' v ann_v ev sub_t sub_v tlt.
+  apply translate_reflect in tlt; try apply NoDup_nil.
   revert t' tlt; induction ev; 
   intros t'' tlt; inversion sub_t.
   - admit. (* nonsensible case right now *)
-  - (* apply case *) admit.
-  - (* mkApps case *) subst. invs tlt. admit.
-  - (* fix case *) subst. inversion sub_v. 
-    apply mkApps_in_subset in H3 as [Hcontra _].
-    inversion Hcontra.
-  - (* fix case *) inversion tlt. subst. admit.
-  - (* mkApps constr case *) subst. inversion tlt. subst.
+  - (* apply case *)
+    inversion tlt. subst.
+    evar (ann_l : annots box_type (tLambda na b)).
+    evar (ann_a : annots box_type a').
+    eapply val_in_sub in ev1 as sub_lambda; eauto.
+    eapply val_in_sub in ev2 as sub_arg; eauto.
+    destruct (IHev1 ann_t1 ann_l H1 sub_lambda t1' H5) as [ann_v1 [v1' [k1 [tlt_l ev_l]]]].
+    destruct (IHev2 ann_t2 ann_a H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
+    inversion tlt_l. subst.
+    assert (tlt_sb : translatesTo remap_env [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
+    { eapply (csubst_correct); auto. }
+    apply tlt_in_sub in tlt_sb as sub_sb.
+    specialize (IHev3 (annot_csubst ann_v2 0 ann_b) ann_v sub_sb sub_v (subst x' v2' b') tlt_sb).
+    
+    destruct IHev3 as [ann_v' [k3 [v' IHev3]]].
     admit.
-  - (* Atoms applied to values *) admit.
+  - (* mkApps case *) 
+    eapply val_in_sub in ev1 as sub_apps; eauto.
+    apply mkApps_in_subset in sub_apps as [sub_f _]. 
+    inversion sub_f.
+  - (* fix case *) 
+    inversion sub_v.
+    apply mkApps_in_subset in H5 as [sub_fix _].
+    inversion sub_fix.
+  - (* fix case *)
+    eapply val_in_sub in ev1 as sub_fix; eauto.
+    inversion sub_fix.
+  - (* mkApps constr case *)
+    eapply val_in_sub in ev1 as sub_apps; eauto.
+    apply mkApps_in_subset in sub_apps as [sub_constr _].
+    inversion sub_constr.
+  - (* Atoms applied to values *)
+    inversion tlt. destruct ann_v as [_ [ann_vf ann_va]].
+    specialize (IHev1 ann_t1 ann_vf H1). admit.
   (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 

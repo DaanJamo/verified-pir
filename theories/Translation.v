@@ -42,7 +42,7 @@ Definition translate_ty : box_type -> option PIR.ty :=
     a' <- go a ;;
     b' <- go b ;;
     Some (PIR.Ty_Fun a' b')
-  | TConst kn => lookup TT (string_of_kername kn)
+  | TInd ind => lookup TT (string_of_kername ind.(inductive_mind))
   | _ => None
   end.
 
@@ -77,9 +77,9 @@ Inductive translatesTypeTo : box_type -> PIR.ty -> Prop :=
       translatesTypeTo ty1 ty1' ->
       translatesTypeTo ty2 ty2' ->
       translatesTypeTo (TArr ty1 ty2) (PIR.Ty_Fun ty1' ty2')
-  | tlty_kn : forall kn ty',
-      lookup TT (string_of_kername kn) = Some ty' ->
-      translatesTypeTo (TConst kn) ty'.
+  | tlty_ind : forall ind ty',
+      lookup TT (string_of_kername ind.(inductive_mind)) = Some ty' ->
+      translatesTypeTo (TInd ind) ty'.
 
 Inductive translatesTo (Γ : list string) : forall (t : term),
   annots box_type t -> PIR.term -> Prop :=
@@ -108,7 +108,7 @@ Proof.
       specialize (IHty2 ty2' eq_refl).
       inversion H0 as [Hty'].
       now eapply tlty_fun.
-    + now apply tlty_kn.
+    + now apply tlty_ind.
 Qed.
 
 Theorem translate_reflect : forall Γ t t' (ann : annots box_type t),
@@ -150,8 +150,9 @@ Definition identity_EAst : term :=
   tLambda (nNamed (s_to_bs "y")) 
     (tRel 0).
 
+Definition Z_ind := TInd (mkInd <%% Z %%> 0).
 Definition ann_id :=
-  (TArr (TConst <%% Z %%>) (TConst <%% Z %%>), (TConst <%% Z %%>)).
+  (TArr Z_ind Z_ind, Z_ind).
 
 Eval cbv in (identity_EAst, ann_id).
 Eval cbv in (translate_unsafe nil identity_EAst ann_id).

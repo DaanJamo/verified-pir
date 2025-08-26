@@ -1,4 +1,4 @@
-From MetaCoq.Erasure.Typed Require Import Utils WcbvEvalAux.
+From MetaCoq.Erasure.Typed Require Import Annotations Utils WcbvEvalAux.
 From MetaCoq.Erasure Require Import EAst ECSubst ELiftSubst.
 From MetaCoq.Utils Require Import utils.
 
@@ -134,18 +134,25 @@ Proof.
   - now apply S_tApp.
 Qed.
 
-Lemma subset_is_translatable : forall TT Γ t ann_t,
+(* notion of typablility under the remapping *)
+Lemma subset_is_translatable : forall TT Γ t,
   InSubset Γ t ->
-  exists t', translate_term TT Γ t ann_t = Some t'.
+  exists ann t', translate_term TT Γ t ann = Some t'.
 Proof.
-  intros TT Γ t ann_t sub. 
+  intros TT Γ t sub. 
   induction sub; subst.
-  - simpl. eauto.
-  - exists (Var res).
+  - eexists _, _. constructor.
+  - eexists. exists (Var res).
     simpl. now rewrite H.
-  - destruct ann_t as [t_ty ann_b].
-    destruct (IHsub ann_b) as [b' IHb].
-    simpl. admit.
-  - destruct ann_t as [t_ty [ann_f ann_a]].
-    simpl.
+  - destruct IHsub as [ann_b [b' IHb]].
+    evar (f_ty : ExAst.box_type).
+    evar (f_ty' : PIR.ty).
+    simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh (bs_to_s x) Γ) f_ty' b').
+    assert (translate_ty TT f_ty = Some f_ty'). admit.
+    assert (x' = gen_fresh (bs_to_s x) Γ). admit. rewrite <- H0.
+    rewrite H, IHb. auto.
+  - destruct IHsub1 as [ann_t1 [t1' IHt1]].
+    destruct IHsub2 as [ann_t2 [t2' IHt2]].
+    simpl. eexists (_, (ann_t1, ann_t2)), (Apply t1' t2').
+    now rewrite IHt1, IHt2.
 Admitted.
