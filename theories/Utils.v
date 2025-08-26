@@ -571,3 +571,11 @@ Proof.
   - auto.
   - admit.
 Admitted.
+
+From MetaCoq.Erasure.Typed Require Import ResultMonad.
+
+Definition res_to_opt {T E : Type} (res : result T E) : option T :=
+  match res with
+  | Ok v => Some v
+  | Err _ => None
+  end.

@@ -41,11 +41,11 @@ Program Definition east_to_stlc_transform :
   Transform.t global_context unit EAst.term tm EAst.term tm
   (eval_eprogram final_wcbv_flags) 
   eval_tm_program :=
-  {| name := "translate lambda box to stlc" ;
-     pre := translatable_et ;
-     transform := translate_erased_program ;
-     post _ := True ;
-     obseq ep _ p ev v := True ;
+  {| name := "translate lambda box to stlc";
+     pre := translatable_et;
+     transform := translate_erased_program;
+     post _ := True;
+     obseq ep _ p ev v := True;
      preservation _ _ _ _ := _
   |}.
 Next Obligation.
@@ -131,7 +131,6 @@ Admitted.
 Import Strings.String.
 
 Axiom assume_translatable : forall p, pre simple_pipeline ([], p).
-
 Definition compile_pir (p : Ast.Env.program) : PIR.term :=
   (run simple_pipeline ([], p) (assume_translatable p)).2.
 

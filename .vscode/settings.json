@@ -12,7 +12,8 @@
     "**/Thumbs.db": true,
     "**/CVS": true
   },
-  "coq-lsp.check_only_on_request": false,
+  "coq-lsp.check_only_on_request": true,
   "coq-lsp.path": "/nix/store/f6inyj931nnf7qj9fynvfq9a0zc7jw34-coq-lsp-0.2.2+8.20/bin/coq-lsp",
-  "coq-lsp.pp_type": 1
+  "coq-lsp.pp_type": 1,
+  "coq-lsp.max_errors": 25
 }
