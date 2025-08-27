@@ -57,59 +57,47 @@ Definition eval_typed_eprogram (epT : typed_eprogram) (v : EAst.term) :=
 Definition dearg_params := 
   dearg_transform (fun _ => None) true false true true true.
 
-Definition extract_env_args :=
+Definition extract_opt_args :=
   {| check_wf_env_func Σ := Ok (assume_env_wellformed Σ);
      template_transforms := [];
      pcuic_args :=
        {| optimize_prop_discr := true;
-          extract_transforms := [(* dearg_params*)] |} |}.
+          extract_transforms := [dearg_params] |} |}.
 
-(* Axiom assume_env_wellformed_ext : forall Σ : PCUICAst.PCUICEnvironment.global_env_ext, 
-    ∥ PCUICTyping.wf_ext Σ ∥.
-Eval vm_compute in 
-  let p := <# fun x y : Z => y #> in
-  let pp := TemplateToPCUIC.trans_template_program p in
-  let pΣ : PCUICAst.PCUICEnvironment.global_env_ext := 
-    PCUICProgram.global_env_ext_map_global_env_ext pp.1 in
-  ExtractionCorrectness.erase_term (assume_env_wellformed_ext pΣ) pp.2 _. *)
+Definition extract_no_opt_args :=
+  {| check_wf_env_func Σ := Ok (assume_env_wellformed Σ);
+     template_transforms := [];
+     pcuic_args :=
+       {| optimize_prop_discr := true;
+          extract_transforms := [] |} |}.
 
-(* Definition add_one (A : Type) (x : A) (xs : list A) := @cons A x xs. *)
+Local Open Scope string_scope.
 
-Locate erase_type.
-
-Definition annot_extract_pir_env
-           (Σ : PCUICAst.PCUICEnvironment.global_env)
-           (wfΣ : ∥PCUICTyping.wf Σ∥)
-           (include : KernameSet.t)
-           (ignore : list kername) : result (∑ pΣ, env_annots box_type pΣ) string.
+Definition translate_env (Σ : Ast.Env.global_env) (dearg : bool)
+    (include : KernameSet.t) (ignore : list kername) : result (∑ eΣ, env_annots box_type eΣ) string.
 Proof.
+  set (args := if dearg then extract_opt_args else extract_no_opt_args).
   set (fun kn => existsb (eq_kername kn) ignore) as to_ignore.
-  unshelve epose proof (annot_extract_pcuic_env (pcuic_args extract_env_args) Σ wfΣ include to_ignore _).
-  - cbn. constructor.
-  - destruct extract_pcuic_env.
-    * exact (Ok (t0; X)).
-    * exact (Err (bs_to_s e)).
+  unshelve epose proof (annot_extract_template_env args Σ include to_ignore _) as env_ann.
+  - destruct dearg.
+    + constructor;[|constructor]. apply annot_dearg_transform.
+    + constructor.
+  - destruct extract_template_env as [eΣ|].
+    + exact (Ok (eΣ; env_ann)).
+    + exact (Err "could not translate environment"%string).
 Defined.
 
-Definition translate_env (Σ : Ast.Env.global_env) 
-    (include : KernameSet.t) (ignore : list kername) :=
-  let pΣ_map := TemplateToPCUIC.trans_global_env Σ in
-  let pΣ := (PCUICProgram.trans_env_env pΣ_map) in
-  annot_extract_pir_env pΣ (assume_env_wellformed pΣ) include ignore.
+(* Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) []. *)
 
-Eval vm_compute in translate_env <# gal_id #>.1 (KernameSet.singleton <%% gal_id %%>) [].
-
-Definition translate_program (p : Ast.Env.program) : typed_eprogram :=
+Definition translate_program (p : Ast.Env.program) (dearg : bool) : typed_eprogram :=
   match to_kername p.2 with
   | Some kn => (* also get/ignore dependencies? *)
-    match (translate_env p.1 (KernameSet.singleton kn) []) with
+    match (translate_env p.1 dearg (KernameSet.singleton kn) []) with
     | Ok epT => (epT, kn)
     | Err e => error_epT e
     end
   | None => error_epT "term is not a constant"
   end.
-
-Local Open Scope string_scope.
 
 Definition translate_constant
            (Σ : ExAst.global_env)
@@ -143,10 +131,10 @@ Definition translate_typed_eprogram (epT : typed_eprogram) :=
   end.
 
 (* translate without going through the partially verified pipeline *)
-Definition compile_to_pir_directly (p : Ast.Env.program) :=
-  translate_typed_eprogram (translate_program p).
+Definition compile_to_pir_directly (p : Ast.Env.program) (dearg : bool) :=
+  translate_typed_eprogram (translate_program p dearg).
 
-(* Eval cbv in compile_to_pir_directly <# gal_id #>. *)
+(* Eval cbv in compile_to_pir_directly <# gal_id #> false. *)
 
 Definition translatable_program (p : Ast.Env.program) : Prop :=
   exists epT, translate_program p = epT.
@@ -179,7 +167,7 @@ Program Definition gallina_to_lbt_transform :
   eval_typed_eprogram :=
   {| name := "translate Gallina program to λ□T"%bs;
      pre _ := True;
-     transform p _ := translate_program p;
+     transform p _ := translate_program p false;
      post _ := True;
      correctness p _ := I;
      obseq p _ p' v v' := True;
@@ -236,4 +224,4 @@ Definition compile_and_print_pir (p : Ast.Env.program) :=
   print_as_program (compile_pir p).
 
 MetaCoq Quote Recursively Definition qid := gal_id.
-Eval vm_compute in compile_and_print_pir qid.  
+Eval vm_compute in compile_and_print_pir qid.

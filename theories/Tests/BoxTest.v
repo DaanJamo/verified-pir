@@ -29,8 +29,8 @@ Definition no_check_args :=
   {| check_wf_env_func Σ := Ok (assume_env_wellformed Σ);
      template_transforms := [];
      pcuic_args :=
-       {| optimize_prop_discr := true;
-          extract_transforms := [dearg_transform (fun _ => None) true true false false false] |} |}.
+       {| optimize_prop_discr := false;
+          extract_transforms := [dearg_transform (fun _ => None) false false false false false] |} |}.
 
 Definition cic_to_box_typed p :=
   entry <- match p.2 with
@@ -42,10 +42,8 @@ Definition cic_to_box_typed p :=
          no_check_args
          p.1
          (KernameSet.singleton entry)
-         (fun k => false);;
+         (fun _ => false);;
   Ok Σ.
-
-Check annot_extract_template_env_within_coq_sig.
 
 (* Program Definition erase_type_of_program (p : Ast.Env.program) : P.global_env_ext * box_type :=
     let Σ := TemplateToPCUIC.trans_global_env p.1 in
