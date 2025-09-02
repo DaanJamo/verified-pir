@@ -200,7 +200,7 @@ Proof with (eauto using eval).
   apply translate_reflect in tlt; try apply NoDup_nil.
   revert t' tlt; induction ev; 
   intros t'' tlt; inversion sub_t.
-  - admit. (* nonsensible case right now *)
+  - (* □ applied to values, temporary nonsensible case *) admit. 
   - (* apply case *)
     inversion tlt. subst.
     evar (ann_l : annots box_type (tLambda na b)).
@@ -214,34 +214,42 @@ Proof with (eauto using eval).
     { eapply (csubst_correct); auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev3 (annot_csubst ann_v2 0 ann_b) ann_v sub_sb sub_v (subst x' v2' b') tlt_sb).
-    
-    destruct IHev3 as [ann_v' [k3 [v' IHev3]]].
-    admit.
-  - (* mkApps case *) 
+    destruct IHev3 as [ann_v' [v' [k3 [tlt_v ev_v]]]].
+    exists ann_v'. exists v'. eexists. split.
+    + apply tlt_v.
+    + eapply E_Apply. 
+      * eexists.
+      * apply ev_l.
+      * apply ev_v2.
+      * apply ev_v.
+  - (* mkApps fix *) 
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_f _]. 
     inversion sub_f.
-  - (* fix case *) 
+  - (* fix guarded *) 
     inversion sub_v.
     apply mkApps_in_subset in H5 as [sub_fix _].
     inversion sub_fix.
-  - (* fix case *)
+  - (* fix unguarded *)
     eapply val_in_sub in ev1 as sub_fix; eauto.
     inversion sub_fix.
-  - (* mkApps constr case *)
+  - (* mkApps constr *)
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_constr _].
     inversion sub_constr.
   - (* Atoms applied to values *)
-    inversion tlt. destruct ann_v as [_ [ann_vf ann_va]].
-    specialize (IHev1 ann_t1 ann_vf H1). admit.
+    subst. induction f16; inversion H1.
+    + inversion ev1. subst. inversion i.
+    + rewrite List.nth_error_nil in H0. discriminate H0.
+    + inversion ev1. subst. inversion i.
+    + subst. admit.
   (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 
     + apply tlt_tt. 
     + apply E_Constant. eauto.
-  - subst. inversion i.
-  - subst. exists ann_t. exists t''. inversion tlt. 
+  - (* rel *) subst. inversion i.
+  - (* lambda *) subst. exists ann_t. exists t''. inversion tlt. 
     subst. eexists. split. 
     + apply tlt. 
     + apply E_LamAbs. eauto.

@@ -520,9 +520,9 @@ Definition extract_and_print_no_opt p := general_extract_typed p false [] [].
 Definition extract_opt p := translate_program p true [] [].
 Definition extract_no_opt p := translate_program p false [] [].
 
-Definition id_test := (fun x : Z => x).
+Definition id_test {A : Type} (x : A) := x.
 MetaCoq Quote Recursively Definition test_const := id_test.
-Eval vm_compute in ("normal: " ^ extract_and_print_no_opt test_const, "optimized: " ^ extract_and_print_opt test_const).
+(* Eval vm_compute in ("normal: " ^ extract_and_print_no_opt test_const, "optimized: " ^ extract_and_print_opt test_const). *)
 (* Eval vm_compute in extract_opt test_const. *)
 
 

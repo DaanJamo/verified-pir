@@ -111,7 +111,8 @@ Proof.
   - constructor.
   - specialize (IHev1 Γ H1). invs IHev1.
     specialize (IHev2 Γ H2). apply IHev3.
-    admit.
+    eapply (csubst_in_sub' [] Γ).
+    admit. apply H0.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. inversion H1.
