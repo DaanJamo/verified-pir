@@ -15,7 +15,7 @@ Inductive InSubset (Γ : list string) : EAst.term -> Prop :=
     InSubset Γ (tRel n)
   | S_tLambda : forall x x' b,
     InSubset (x' :: Γ) b ->
-    InSubset Γ (tLambda (BasicAst.nNamed x) b)
+    InSubset Γ (tLambda x b)
   | S_tApp : forall f a,
     InSubset Γ f ->
     InSubset Γ a ->
@@ -148,12 +148,68 @@ Proof.
   - destruct IHsub as [ann_b [b' IHb]].
     evar (f_ty : ExAst.box_type).
     evar (f_ty' : PIR.ty).
-    simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh (bs_to_s x) Γ) f_ty' b').
+    simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh_name x Γ) f_ty' b').
     assert (translate_ty TT f_ty = Some f_ty'). admit.
-    assert (x' = gen_fresh (bs_to_s x) Γ). admit. rewrite <- H0.
-    rewrite H, IHb. auto.
+    assert (x' = gen_fresh_name x Γ). admit. rewrite <- H0.
+    rewrite H, IHb. simpl. auto.
   - destruct IHsub1 as [ann_t1 [t1' IHt1]].
     destruct IHsub2 as [ann_t2 [t2' IHt2]].
     simpl. eexists (_, (ann_t1, ann_t2)), (Apply t1' t2').
     now rewrite IHt1, IHt2.
 Admitted.
+
+Import EWellformed.
+
+Definition subset_primitive_flags :=
+{|
+  has_primint := false;
+  has_primfloat := false;
+  has_primstring := false;
+  has_primarray := false
+|}.
+
+Definition subset_term_flags :=
+  {| has_tBox := true;
+     has_tRel := true;
+     has_tVar := false;
+     has_tEvar := false;
+     has_tLambda := true;
+     has_tLetIn := false;
+     has_tApp := true;
+     has_tConst := false;
+     has_tConstruct := false;
+     has_tCase := false;
+     has_tProj := false;
+     has_tFix := false;
+     has_tCoFix := false;
+     has_tPrim := subset_primitive_flags;
+     has_tLazy_Force := false
+  |}.
+
+Definition subset_env_flags :=
+  {| has_axioms := false;
+     term_switches := subset_term_flags;
+     has_cstr_params := false;
+     cstr_as_blocks := false
+  |}.
+
+Local Existing Instance subset_env_flags.
+
+Lemma wellformed_implies_subset : forall Σ Γ t,
+  @wellformed subset_env_flags Σ (List.length Γ) t ->
+  InSubset Γ t (* all declarations in env_annots *).
+Proof.
+  intros Σ Γ t. revert Γ.
+  induction t; intros Γ Hwf; inversion Hwf.
+  - constructor.
+  - apply Nat.ltb_lt, nth_error_Some_value in H0.
+    destruct H0. now eapply S_tRel.
+  - pose (na' := gen_fresh_name na Γ).
+    apply (S_tLambda Γ na na'). apply IHt. 
+    simpl. apply H0.
+  - apply andb_true_iff in H0 as [Hwf_t1 Hwf_t2].
+    econstructor.
+    apply IHt1; assumption.
+    apply IHt2; assumption.
+  - destruct prim as [[]]; inversion Hwf.
+Qed.

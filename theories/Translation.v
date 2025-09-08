@@ -34,6 +34,12 @@ Section translate.
 
 Context (TT : env PIR.ty).
 
+Definition gen_fresh_name na Γ :=
+  match na with
+  | nAnon => gen_fresh "anon" Γ
+  | nNamed id => gen_fresh id Γ
+  end.
+
 Definition translate_ty : box_type -> option PIR.ty :=
   fix go (ty : box_type) :=
   match ty with
@@ -55,10 +61,10 @@ Fixpoint translate_term (Γ : list string) (t : term)
     | Some id => Some (PIR.Var id)
     | None => None
     end
-  | tLambda (nNamed x) t => fun '(ty, t_ty) =>
+  | tLambda x t => fun '(ty, t_ty) =>
       match ty with
       | TArr a _ =>
-        let x' := gen_fresh (bs_to_s x) Γ in
+        let x' := gen_fresh_name x Γ in
         a' <- translate_ty a ;;
         t' <- translate_term (x' :: Γ) t t_ty ;;
         Some (LamAbs x' a' t')
@@ -90,7 +96,7 @@ Inductive translatesTo (Γ : list string) : forall (t : term),
   | tlt_lambda : forall x x' ty1 ty2 b ann_b ty1' b',
       translatesTypeTo ty1 ty1' ->
       translatesTo (x' :: Γ) b ann_b b' ->
-      translatesTo Γ (tLambda (nNamed x) b) ((TArr ty1 ty2), ann_b) (LamAbs x' ty1' b')
+      translatesTo Γ (tLambda x b) ((TArr ty1 ty2), ann_b) (LamAbs x' ty1' b')
   | tlt_app : forall t1 t2 t1' t2' ann_t1 ann_t2 ty,
       translatesTo Γ t1 ann_t1 t1' ->
       translatesTo Γ t2 ann_t2 t2' ->
@@ -121,13 +127,13 @@ Proof.
     + destruct (nth_error Γ n) eqn:El; [|discriminate].
       inversion Ht as [Ht']. apply tlt_rel. 
       now apply nth_error_to_find_index in El. 
-    + destruct na; try discriminate.
-      destruct ann as [[] ann_b]; try discriminate.
+    + destruct ann as [[] ann_b]; try discriminate.
       destruct (translate_ty dom) as [ty1'|] eqn:tl_ty; [|discriminate].
-      destruct (translate_term (gen_fresh i Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
-      inversion Ht as [Ht']. assert (Hnodup' : NoDup (gen_fresh i Γ :: Γ)).
-      apply NoDup_cons. apply gen_fresh_fresh. assumption.
-      specialize (IHt (gen_fresh i Γ :: Γ) b' ann_b Hnodup' tl_b).
+      destruct (translate_term (gen_fresh_name na Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
+      inversion Ht as [Ht']. assert (Hnodup' : NoDup (gen_fresh_name na Γ :: Γ)).
+      apply NoDup_cons; try assumption. 
+      unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
+      specialize (IHt (gen_fresh_name na Γ :: Γ) b' ann_b Hnodup' tl_b).
       apply (translate_type_reflect dom ty1') in tl_ty.
       now apply tlt_lambda.
     + destruct ann as [ty [ann_t1 ann_t2]].

@@ -2,7 +2,7 @@ From Coq Require Import Program.
 From MetaCoq.Utils Require Import utils.
 From MetaCoq.Common Require Import Kernames Transform config.
 From MetaCoq.Template Require Import Ast Loader TemplateMonad TemplateProgram.
-From MetaCoq.Erasure Require Import ExAst EProgram EWcbvEval.
+From MetaCoq.Erasure Require Import ExAst EProgram EWellformed EWcbvEval.
 From MetaCoq.Erasure.Typed Require Import Annotations TypeAnnotations Erasure Utils.
 From MetaCoq.Erasure.Typed Require Import Extraction ResultMonad Optimize.
 From MetaCoq.ErasurePlugin Require Import Erasure Loader.
@@ -15,7 +15,6 @@ From VTL Require Import Translation Semantics Subset.
 From Coq.Strings Require Import String.
 Import MCMonadNotation ListNotations.
 
-Local Existing Instance extraction_checker_flags.
 Local Existing Instance fake_guard_impl_instance.
 Local Existing Instance extraction_checker_flags.
 
@@ -25,8 +24,11 @@ Import Common.Transform.Transform.
 
 #[local] Obligation Tactic := program_simpl.
 
+Print ETransform.typed_erasure_pre.
+Print EWellformed.wellformed.
+
 Definition typed_eprogram := (∑ env : ExAst.global_env, env_annots box_type env) * kername.
-Definition typed_eterm := (∑ et : EAst.term, annots box_type et).
+(* Definition typed_eterm := (∑ et : EAst.term, annots box_type et). *)
 
 Definition error_epT (err : string) : typed_eprogram := 
   (([]; tt), (MPfile [], "failed to erase program: " ^ (s_to_bs err))).  
@@ -87,7 +89,14 @@ Proof.
     + exact (Err "could not translate environment"%string).
 Defined.
 
-(* Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) []. *)
+(* Definition eΣT := Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) [].
+Definition eΣ : global_context := Eval cbv in
+  match eΣT with
+  | Ok (eΣ; _) => ExAst.trans_env eΣ
+  | Err _ => []
+  end.
+
+Eval vm_compute in EWellformed.wellformed eΣ (List.length eΣ) (tLambda (nNamed "x"%bs) tBox). *)
 
 Definition translate_program (p : Ast.Env.program) (dearg : bool) : typed_eprogram :=
   match to_kername p.2 with
@@ -162,7 +171,7 @@ t (env env' term term' value value' : Type) (eval : program env term -> value ->
   preservation : preserves_eval pre transform obseq }. *)
 
 Program Definition gallina_to_lbt_transform :
-  Transform.t Ast.Env.global_env (∑ env : ExAst.global_env, env_annots box_type env) Ast.term kername Ast.term EAst.term
+  Transform.t Ast.Env.global_env (∑ env : ExAst.global_env, env_annots box_type env) Ast.term kername _ _
   eval_template_program
   eval_typed_eprogram :=
   {| name := "translate Gallina program to λ□T"%bs;
@@ -222,6 +231,7 @@ From VTL Require Import Pretty.
 
 Definition compile_and_print_pir (p : Ast.Env.program) :=
   print_as_program (compile_pir p).
-
+  
+Print gal_id.
 MetaCoq Quote Recursively Definition qid := gal_id.
 Eval vm_compute in compile_and_print_pir qid.
