@@ -187,7 +187,7 @@ Instance ShowTy : Show ty :=
   show := show_ty
 |}.
 
-(*Definition show_vdecl (vd : vdecl) : string :=
+Definition show_vdecl (vd : vdecl) : string :=
   match vd with
   | VarDecl bn T => sexp "vardecl" [bn ; show T]
   end
@@ -199,7 +199,7 @@ Instance ShowVDecl : Show vdecl :=
   show := show_vdecl
 |}.
 
-Definition show_tvdecl (tvd : tvdecl) : string :=
+(*Definition show_tvdecl (tvd : tvdecl) : string :=
   match tvd with
   | TyVarDecl btn k => sexp "tyvardecl" [btn ; show_parens k]
   end
@@ -227,8 +227,8 @@ Instance ShowDTDecl : Show dtdecl :=
 
 Fixpoint show_term (t : term) : string :=
   match t with
-  (* | Let rec bds t => sexp "let" [show_parens rec ;
-      sep (map show_binding bds) ; show_term t] *)
+  | Let bds t => sexp "let" ["(nonrec)" ;
+      sep (map show_binding bds) ; show_term t]
   | Var x => sep [x]
   (* | TyAbs bn k t => sexp "abs" [bn ; show k ; show_term t] *)
   | LamAbs x T t => sexp "lam" [x  ; show T ; show_term t]
@@ -243,13 +243,13 @@ Fixpoint show_term (t : term) : string :=
   (* | Case T t ts => sexp "case" [show T ; show_term t ; sep (map show_term ts)] *)
   end
 
-(* with show_binding (b : binding) : string := 
+with show_binding (b : binding) : string := 
   match b with
-  | TermBind strc vdecl t => sexp "termbind" [
-      show strc ; show vdecl ; show_term t]
-  | TypeBind tvdecl T => sexp "typebind" [show tvdecl ; show T]
-  | DatatypeBind dtdecl => sexp "datatypebind" [show dtdecl]
-  end *)
+  | TermBind vdecl t => sexp "termbind" [
+      "(strict)" ; show vdecl ; show_term t]
+  (*| TypeBind tvdecl T => sexp "typebind" [show tvdecl ; show T]
+  | DatatypeBind dtdecl => sexp "datatypebind" [show dtdecl]*)
+  end
 .
 
 #[global]
@@ -261,3 +261,7 @@ Instance ShowTerm : Show term :=
 Definition print_as_program (t : term) :=
   sexp "program" ["1.1.0" ; show t]
 .
+
+Definition let_test := let binding := TermBind (VarDecl "y" (Ty_Builtin DefaultUniInteger)) (Constant (ValueOf DefaultUniInteger 1)) in
+ Let [binding] (Apply (LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")) (Var "y")).
+Eval cbv in print_as_program let_test.

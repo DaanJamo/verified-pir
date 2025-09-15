@@ -61,19 +61,29 @@ Fixpoint translate_term (Γ : list string) (t : term)
     | Some id => Some (PIR.Var id)
     | None => None
     end
-  | tLambda x t => fun '(ty, t_ty) =>
-      match ty with
-      | TArr a _ =>
-        let x' := gen_fresh_name x Γ in
-        a' <- translate_ty a ;;
-        t' <- translate_term (x' :: Γ) t t_ty ;;
-        Some (LamAbs x' a' t')
-      | _ => None
-      end
-  | tApp s t => fun '(_, (s_ty, t_ty)) =>
-    s' <- translate_term Γ s s_ty ;;
-    t' <- translate_term Γ t t_ty ;;
-    Some (PIR.Apply s' t')
+  | tLambda x b => fun '(ty, ann_b) =>
+    match ty with
+    | TArr br_ty _ =>
+      let x' := gen_fresh_name x Γ in
+      br_ty' <- translate_ty br_ty ;;
+      b' <- translate_term (x' :: Γ) b ann_b ;;
+      Some (LamAbs x' br_ty' b')
+    | _ => None
+    end
+  | tLetIn x br b => fun '(ty, (ann_br, ann_b)) =>
+    match ty with
+    | TArr br_ty _ =>
+      let x' := gen_fresh_name x Γ in
+      br_ty' <- translate_ty br_ty ;; 
+      br' <- translate_term Γ br ann_br ;;
+      b' <- translate_term (x' :: Γ) b ann_b ;;
+      Some (Let [TermBind (VarDecl x' br_ty') br'] b')
+    | _ => None
+    end
+  | tApp f a => fun '(_, (ann_f, ann_a)) =>
+    f' <- translate_term Γ f ann_f ;;
+    a' <- translate_term Γ a ann_a ;;
+    Some (Apply f' a')
   | _ => fun _ => None
   end.
 
@@ -93,11 +103,16 @@ Inductive translatesTo (Γ : list string) : forall (t : term),
   | tlt_rel : forall n x ann,
       find_index_string Γ x = Some n ->
       translatesTo Γ (tRel n) ann (Var x)
-  | tlt_lambda : forall x x' ty1 ty2 b ann_b ty1' b',
-      translatesTypeTo ty1 ty1' ->
+  | tlt_lambda : forall x x' arg_ty res_ty b ann_b arg_ty' b',
+      translatesTypeTo arg_ty arg_ty' ->
       translatesTo (x' :: Γ) b ann_b b' ->
-      translatesTo Γ (tLambda x b) ((TArr ty1 ty2), ann_b) (LamAbs x' ty1' b')
-  | tlt_app : forall t1 t2 t1' t2' ann_t1 ann_t2 ty,
+      translatesTo Γ (tLambda x b) (TArr arg_ty res_ty, ann_b) (LamAbs x' arg_ty' b')
+  | tlt_let : forall x x' br_ty b_ty br b ann_br ann_b br_ty' br' b',
+      translatesTypeTo br_ty br_ty' ->
+      translatesTo Γ br ann_br br' ->
+      translatesTo (x' :: Γ) b ann_b b' ->
+      translatesTo Γ (tLetIn x br b) (TArr br_ty b_ty, (ann_br, ann_b)) (Let [(TermBind (VarDecl x' br_ty') br')] b')
+  | tlt_app : forall t1 t2 ann_t1 ann_t2 ty t1' t2',
       translatesTo Γ t1 ann_t1 t1' ->
       translatesTo Γ t2 ann_t2 t2' ->
       translatesTo Γ (tApp t1 t2) (ty, (ann_t1, ann_t2)) (PIR.Apply t1' t2').
@@ -123,26 +138,37 @@ Theorem translate_reflect : forall Γ t t' (ann : annots box_type t),
 Proof.
   intros Γ t. revert Γ. induction t; try discriminate; 
   intros Γ t' ann nodup tl_t; inversion tl_t as [Ht].
-    + apply tlt_tt.
-    + destruct (nth_error Γ n) eqn:El; [|discriminate].
-      inversion Ht as [Ht']. apply tlt_rel. 
-      now apply nth_error_to_find_index in El. 
-    + destruct ann as [[] ann_b]; try discriminate.
-      destruct (translate_ty dom) as [ty1'|] eqn:tl_ty; [|discriminate].
-      destruct (translate_term (gen_fresh_name na Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
-      inversion Ht as [Ht']. assert (Hnodup' : NoDup (gen_fresh_name na Γ :: Γ)).
-      apply NoDup_cons; try assumption. 
-      unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
-      specialize (IHt (gen_fresh_name na Γ :: Γ) b' ann_b Hnodup' tl_b).
-      apply (translate_type_reflect dom ty1') in tl_ty.
-      now apply tlt_lambda.
-    + destruct ann as [ty [ann_t1 ann_t2]].
-      destruct (translate_term Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
-      destruct (translate_term Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
-      inversion Ht as [Ht'].
-      specialize (IHt1 Γ t1' ann_t1 nodup tl_t1).
-      specialize (IHt2 Γ t2' ann_t2 nodup tl_t2).
-      now apply tlt_app.
+  - apply tlt_tt.
+  - destruct (nth_error Γ n) eqn:El; [|discriminate].
+    inversion Ht as [Ht']. apply tlt_rel. 
+    now apply nth_error_to_find_index in El. 
+  - destruct ann as [[] ann_b]; try discriminate.
+    destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
+    destruct (translate_term (gen_fresh_name na Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
+    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Γ :: Γ)).
+    apply NoDup_cons; try assumption. 
+    unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
+    specialize (IHt (gen_fresh_name na Γ :: Γ) b' ann_b nodup' tl_b).
+    apply (translate_type_reflect dom br_ty') in tl_ty.
+    now apply tlt_lambda.
+  - destruct ann as [[] [ann_br ann_b]]; try discriminate.
+    destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
+    destruct (translate_term Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
+    destruct (translate_term (gen_fresh_name na Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; [|discriminate].
+    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Γ :: Γ)).
+    apply NoDup_cons; try assumption.
+    unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
+    specialize (IHt1 Γ br' ann_br nodup tl_br).
+    specialize (IHt2 (gen_fresh_name na Γ :: Γ) b' ann_b nodup' tl_b).
+    apply (translate_type_reflect dom br_ty') in tl_ty.
+    now apply tlt_let.
+  - destruct ann as [ty [ann_t1 ann_t2]].
+    destruct (translate_term Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
+    destruct (translate_term Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
+    inversion Ht as [Ht'].
+    specialize (IHt1 Γ t1' ann_t1 nodup tl_t1).
+    specialize (IHt2 Γ t2' ann_t2 nodup tl_t2).
+    now apply tlt_app.
 Qed.
 
 End translate.
@@ -156,9 +182,14 @@ Definition identity_EAst : term :=
   tLambda (nNamed (s_to_bs "y")) 
     (tRel 0).
 
+Definition let_test : term :=
+  tLetIn (nNamed "x") tBox (tApp identity_EAst (tRel 1)).
+
 Definition Z_ind := TInd (mkInd <%% Z %%> 0).
 Definition ann_id :=
   (TArr Z_ind Z_ind, Z_ind).
 
 Eval cbv in (identity_EAst, ann_id).
 Eval cbv in (translate_unsafe nil identity_EAst ann_id).
+
+Eval cbv in (translate_unsafe nil let_test, (Z_ind, Z_ind, ann_id)).

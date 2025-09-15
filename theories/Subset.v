@@ -16,6 +16,10 @@ Inductive InSubset (Γ : list string) : EAst.term -> Prop :=
   | S_tLambda : forall x x' b,
     InSubset (x' :: Γ) b ->
     InSubset Γ (tLambda x b)
+  | S_tLet : forall x x' br b,
+    InSubset Γ br ->
+    InSubset (x' :: Γ) b ->
+    InSubset Γ (tLetIn x br b)
   | S_tApp : forall f a,
     InSubset Γ f ->
     InSubset Γ a ->
@@ -48,6 +52,7 @@ Proof.
     apply nth_error_Some_length in H as Hl.
     rewrite (nth_error_app1 Γ [x] Hl). assumption.
   - eapply S_tLambda. apply IHsub.
+  - eapply S_tLet. apply IHsub1. apply IHsub2.
   - apply S_tApp; assumption.
 Qed.
 
@@ -61,6 +66,7 @@ Proof.
     apply nth_error_Some_length in H as Hl.
     rewrite (nth_error_app1 Γ Γ2 Hl). assumption.
   - eapply S_tLambda. apply IHsub.
+  - eapply S_tLet. apply IHsub1. apply IHsub2.
   - apply S_tApp; assumption.
 Qed.
 
@@ -87,6 +93,9 @@ Proof.
       apply (S_tRel (Γ1 ++ Γ2) n x0 H). assumption.
   - simpl. econstructor.
     apply (IHb (x' :: Γ1) x). apply H0.
+  - simpl. econstructor.
+    apply (IHb1 Γ1 x); assumption.
+    apply (IHb2 (x' :: Γ1) x); assumption.
   - simpl. constructor. 
     apply (IHb1 Γ1 x); assumption.
     apply (IHb2 Γ1 x); assumption.
@@ -113,6 +122,10 @@ Proof.
     specialize (IHev2 Γ H2). apply IHev3.
     eapply (csubst_in_sub' [] Γ).
     admit. apply H0.
+  - specialize (IHev1 Γ H1).
+    apply IHev2.
+    eapply (csubst_in_sub' [] Γ).
+    admit. apply H3.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. inversion H1.
@@ -132,6 +145,7 @@ Proof.
   - constructor.
   - econstructor. now apply find_index_to_nth_error in H.
   - now eapply S_tLambda.
+  - now eapply S_tLet.
   - now apply S_tApp.
 Qed.
 
@@ -145,17 +159,25 @@ Proof.
   - eexists _, _. constructor.
   - eexists. exists (Var res).
     simpl. now rewrite H.
-  - destruct IHsub as [ann_b [b' IHb]].
+  - destruct IHsub as [ann_b [b' tl_b]].
     evar (f_ty : ExAst.box_type).
     evar (f_ty' : PIR.ty).
     simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh_name x Γ) f_ty' b').
     assert (translate_ty TT f_ty = Some f_ty'). admit.
     assert (x' = gen_fresh_name x Γ). admit. rewrite <- H0.
-    rewrite H, IHb. simpl. auto.
-  - destruct IHsub1 as [ann_t1 [t1' IHt1]].
-    destruct IHsub2 as [ann_t2 [t2' IHt2]].
+    rewrite H, tl_b. simpl. reflexivity.
+  - destruct IHsub1 as [ann_br [br' tl_br]].
+    destruct IHsub2 as [ann_b [b' tl_b]].
+    evar (br_ty : ExAst.box_type).
+    evar (br_ty' : PIR.ty).
+    simpl. eexists (ExAst.TArr br_ty _, (ann_br, ann_b)), (Let [TermBind (VarDecl (gen_fresh_name x Γ) br_ty') br'] b').
+    assert (translate_ty TT br_ty = Some br_ty'). admit.
+    assert (x' = gen_fresh_name x Γ). admit. rewrite <- H0.
+    rewrite H, tl_br, tl_b. simpl. reflexivity.
+  - destruct IHsub1 as [ann_t1 [t1' tl_t1]].
+    destruct IHsub2 as [ann_t2 [t2' tl_t2]].
     simpl. eexists (_, (ann_t1, ann_t2)), (Apply t1' t2').
-    now rewrite IHt1, IHt2.
+    now rewrite tl_t1, tl_t2.
 Admitted.
 
 Import EWellformed.
@@ -174,7 +196,7 @@ Definition subset_term_flags :=
      has_tVar := false;
      has_tEvar := false;
      has_tLambda := true;
-     has_tLetIn := false;
+     has_tLetIn := true;
      has_tApp := true;
      has_tConst := false;
      has_tConstruct := false;
@@ -208,7 +230,12 @@ Proof.
     apply (S_tLambda Γ na na'). apply IHt. 
     simpl. apply H0.
   - apply andb_true_iff in H0 as [Hwf_t1 Hwf_t2].
-    econstructor.
+    pose (na' := gen_fresh_name na Γ).
+    apply (S_tLet Γ na na'). 
+    apply IHt1; assumption.
+    apply IHt2; assumption.
+  - apply andb_true_iff in H0 as [Hwf_t1 Hwf_t2].
+    apply (S_tApp Γ).
     apply IHt1; assumption.
     apply IHt2; assumption.
   - destruct prim as [[]]; inversion Hwf.

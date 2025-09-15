@@ -37,6 +37,11 @@ Proof.
     apply tlt_lambda. 
     + assumption.
     + now apply (IHt (x' :: Γ)).
+  - apply inj_pair2 in H3. subst.
+    apply tlt_let.
+    + assumption.
+    + now apply IHt1.
+    + now apply (IHt2 (x' :: Γ)).
   - apply inj_pair2 in H2. subst. 
     apply tlt_app.
     + apply IHt1; assumption.
@@ -56,6 +61,11 @@ Proof.
     apply tlt_lambda. 
     + assumption.
     + now apply (IHt (x' :: Γ1)).
+  - apply inj_pair2 in H3. subst.
+    apply tlt_let.
+    + assumption.
+    + now apply IHt1.
+    + now apply (IHt2 (x' :: Γ1)).
   - apply inj_pair2 in H2. subst.
     apply tlt_app.
     + apply IHt1; assumption.
@@ -81,6 +91,13 @@ Proof.
     + assumption.
     + apply IHb.
       * now right. 
+      * assumption.
+  - apply inj_pair2 in H3. subst.
+    apply tlt_let.
+    + assumption.
+    + now apply IHb1.
+    + apply (IHb2 (x' :: Γ)).
+      * now right.
       * assumption.
   - apply inj_pair2 in H2. subst.
     apply tlt_app.
@@ -135,6 +152,10 @@ Proof.
   - apply inj_pair2 in H2. subst.
     specialize (IHb (x' :: Γ) ann_b0 b'0 v).
     simpl in *. apply tlt_lambda; auto.
+  - apply inj_pair2 in H3. subst.
+    specialize (IHb1 Γ ann_br br' v).
+    specialize (IHb2 (x' :: Γ) ann_b0 b'0 v).
+    simpl in *. apply tlt_let; auto.
   - apply inj_pair2 in H2. subst. 
     simpl. apply tlt_app.
     + apply IHb1; auto.
@@ -179,6 +200,21 @@ Proof.
     + apply tlt_lambda.
       * assumption.
       * apply IHb; auto. now apply not_in_cons.
+  - apply inj_pair2 in H3. subst.
+    simpl. destruct_str_eq x x'.
+    + apply tlt_let.
+      * assumption.
+      * now apply IHb1. 
+      * subst x'. assert (Hin : In x (x::Γ)) by now left.
+        specialize (csubst_shadowed (x :: Γ) x b2 ann_b0 b'0 v ann_v Hin H6).
+        intros. simpl in H.
+        specialize (strengthen_shadowed_ctx (x :: Γ) x (csubst v (S #|Γ|) b2) (annot_csubst ann_v (S #|Γ|) ann_b0) b'0 Hin H) as Hctx'.
+        apply Hctx'.
+    + apply tlt_let.
+      * assumption.
+      * apply IHb1; assumption.
+      * simpl. assert (~ In x (x' :: Γ)) by now apply not_in_cons.
+        apply IHb2; assumption.
   - apply inj_pair2 in H2. subst.
     specialize (IHb1 Γ ann_v ann_t1 v' t1' HnIn tlt_v H1).
     specialize (IHb2 Γ ann_v ann_t2 v' t2' HnIn tlt_v H4).
@@ -201,7 +237,7 @@ Proof with (eauto using eval).
   revert t' tlt; induction ev; 
   intros t'' tlt; inversion sub_t.
   - (* □ applied to values, temporary nonsensible case *) admit. 
-  - (* apply case *)
+  - (* apply *)
     inversion tlt. subst.
     evar (ann_l : annots box_type (tLambda na b)).
     evar (ann_a : annots box_type a').
@@ -211,7 +247,7 @@ Proof with (eauto using eval).
     destruct (IHev2 ann_t2 ann_a H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
     inversion tlt_l. subst.
     assert (tlt_sb : translatesTo remap_env [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
-    { eapply (csubst_correct); auto. }
+    { eapply csubst_correct; auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev3 (annot_csubst ann_v2 0 ann_b) ann_v sub_sb sub_v (subst x' v2' b') tlt_sb).
     destruct IHev3 as [ann_v' [v' [k3 [tlt_v ev_v]]]].
@@ -222,6 +258,24 @@ Proof with (eauto using eval).
       * apply ev_l.
       * apply ev_v2.
       * apply ev_v.
+  - (* let *)
+    inversion tlt. apply inj_pair2 in H8. subst.
+    evar (ann_brv : annots box_type b0').
+    eapply val_in_sub in ev1 as sub_br; eauto.
+    destruct (IHev1 ann_br ann_brv H1 sub_br br' H10) as [ann_v1 [v1' [k1 [tlt_br ev_br]]]].
+    assert (tlt_sb : translatesTo remap_env [] (csubst b0' 0 b1) (annot_csubst ann_v1 0 ann_b) (BigStepPIR.subst x'0 v1' b')).
+    { eapply csubst_correct; auto. }
+    apply tlt_in_sub in tlt_sb as sub_sb.
+    specialize (IHev2 (annot_csubst ann_v1 0 ann_b) ann_v sub_sb sub_v (subst x'0 v1' b') tlt_sb).
+    destruct IHev2 as [ann_v' [v' [k2 [tlt_v ev_v]]]].
+    exists ann_v'. exists v'. eexists. split.
+    + apply tlt_v.
+    + eapply E_Let. eapply E_Let_TermBind_Strict.
+      * eexists.
+      * apply ev_br.
+      * eapply E_Let_Nil.
+        ** eexists.
+        ** simpl. fold subst. apply ev_v.
   - (* mkApps fix *) 
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_f _]. 
@@ -243,7 +297,7 @@ Proof with (eauto using eval).
     + rewrite List.nth_error_nil in H0. discriminate H0.
     + inversion ev1. subst. inversion i.
     + subst. admit.
-  (* Atoms *)
+(*  (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 
     + apply tlt_tt. 
@@ -252,5 +306,5 @@ Proof with (eauto using eval).
   - (* lambda *) subst. exists ann_t. exists t''. inversion tlt. 
     subst. eexists. split. 
     + apply tlt. 
-    + apply E_LamAbs. eauto.
+    + apply E_LamAbs. eauto. *)
 Admitted.

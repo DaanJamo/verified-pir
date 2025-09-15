@@ -12,8 +12,37 @@ Local Open Scope string_scope.
 
 Require Import FunInd.
 
+Definition bvb (b : binding) : list binderName :=
+  match b with
+  | TermBind (VarDecl x _) _ => [x]
+  end.
+Definition bvbs (bs : list binding) := List.concat (map bvb bs).
+
+Section SubstBindings.
+  Context {subst_b : string -> term -> binding -> binding}.
+
+  Function subst_bnr' (x : string) (s : term) (bs : list binding) : list binding :=
+    match bs with
+    | nil =>
+        nil
+    | b :: bs' =>
+        if existsb (eqb x) (bvb b)
+          then
+            subst_b x s b :: bs'
+          else
+            subst_b x s b :: subst_bnr' x s bs'
+    end.
+
+End SubstBindings.
+
 Function subst (x : string) (s : term) (t : term) {struct t} : term :=
   match t with
+    | Let bs t0 =>
+      Let (@subst_bnr' subst_b x s bs)
+        (if existsb (eqb x) (bvbs bs)
+          then t0
+          else subst x s t0
+        )
   | Var y =>
       if x =? y
         then s
@@ -31,33 +60,19 @@ Function subst (x : string) (s : term) (t : term) {struct t} : term :=
   | Error T =>
       Error T
   end
-.
+
+with
+  subst_b (x : string) (s : term) (b : binding) {struct b} : binding :=
+  match b with
+  | TermBind (VarDecl y T) tb =>
+      TermBind (VarDecl y T) (subst x s tb)
+  end.
 
 Notation "'[' x ':=' s ']' t" := (subst x s t) (in custom plutus_term at level 20, x constr).
 
 (** * Big-step operational semantics *)
 Reserved Notation "t '=[' j ']=>' v"(at level 40).
-
-Fixpoint closedUnder Γ t : bool :=
-  match t with
-  | Var x => existsb (fun v => v =? x) Γ
-  | Apply t1 t2 => closedUnder Γ t1 && closedUnder Γ t2
-  | LamAbs x T b => closedUnder (x :: Γ) b
-  | Constant _ => true
-  | Builtin _ => true
-  | _ => false end.
-
-Notation closed t := (closedUnder nil t).
-
-Function fv (t : term) : list string :=
-    match t with
-     | Var n           => [n]
-     | LamAbs n ty t   => remove string_dec n (fv t)
-     | Apply s t       => fv s ++ fv t
-     | Builtin f       => []
-     | Constant v      => []
-     | Error ty        => []
-   end.
+Reserved Notation "t '=[' j ']=>nr' v"(at level 40).
 
 Inductive eval : term -> term -> nat -> Prop :=
   | E_LamAbs : forall j x T t,
@@ -84,9 +99,25 @@ Inductive eval : term -> term -> nat -> Prop :=
       j = j2 + 1 ->
       t2 =[j2]=> Error T ->
       Apply t1 t2 =[j]=> Error T *)
-  (** Builtins: partial application *)
+  (** let (non-recursive)*)
+  | E_Let : forall bs t v j,
+      Let bs t =[j]=>nr v ->
+      Let bs t =[j]=> v
 
-where "t '=[' j ']=>' v" := (eval t v j).
+with eval_bindings_nonrec : term -> term -> nat -> Prop :=
+  | E_Let_Nil : forall j t0 v0 j0,
+      j = j0 + 1 ->
+      t0 =[j0]=> v0 ->
+      Let nil t0 =[ j ]=>nr v0
+  | E_Let_TermBind_Strict : forall j x T t1 j1 v1 j2 v2 bs t0,
+      j = j1 + 1 + j2 ->
+      t1 =[j1]=> v1 ->
+      (* ~ is_error v1 -> *)
+      <{ [x := v1] {Let bs t0} }> =[j2]=>nr v2 ->
+      Let ((TermBind (VarDecl x T) t1) :: bs) t0 =[j]=>nr v2
+
+where "t '=[' j ']=>' v" := (eval t v j)
+and "t '=[' j ']=>nr' v" := (eval_bindings_nonrec t v j).
 
 Inductive value : term -> Prop :=
   | V_LamAbs : forall x T t0,

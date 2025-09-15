@@ -17,6 +17,10 @@ Local Open Scope Z_scope.
 
 (* Restricted version of the AST from plutus-cert *)
 
+(** recursivity and strictness *)
+(* Inductive recursivity := NonRec | Rec. *)
+(* Inductive strictness := NonStrict | Strict. *)
+
 Inductive DefaultUni :=
   | DefaultUniInteger
   | DefaultUniBool
@@ -109,13 +113,21 @@ Inductive ty :=
   | UNDEFINED : string -> ty
 .
 
+(** Declarations *)
+Inductive vdecl := VarDecl : binderName -> ty -> vdecl.
+
+(* let bindings are always strict and non-recursive for now *)
 Inductive term :=
+  | Let      : (* recursivity ->*) list binding -> term -> term
   | Var      : name -> term
   | LamAbs   : binderName -> ty -> term -> term
   | Apply    : term -> term -> term
   | Builtin  : DefaultFun -> term
   | Constant : constant -> term
   | Error    : ty -> term
+
+with binding :=
+  | TermBind : (* strictness -> *) vdecl -> term -> binding
 .
 
 Declare Scope plutus_scope.
