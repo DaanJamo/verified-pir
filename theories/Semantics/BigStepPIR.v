@@ -37,12 +37,12 @@ End SubstBindings.
 
 Function subst (x : string) (s : term) (t : term) {struct t} : term :=
   match t with
-    | Let bs t0 =>
-      Let (@subst_bnr' subst_b x s bs)
-        (if existsb (eqb x) (bvbs bs)
-          then t0
-          else subst x s t0
-        )
+  | Let bs t0 =>
+    Let (@subst_bnr' subst_b x s bs)
+      (if existsb (eqb x) (bvbs bs)
+        then t0
+        else subst x s t0
+      )
   | Var y =>
       if x =? y
         then s
@@ -119,12 +119,109 @@ with eval_bindings_nonrec : term -> term -> nat -> Prop :=
 where "t '=[' j ']=>' v" := (eval t v j)
 and "t '=[' j ']=>nr' v" := (eval_bindings_nonrec t v j).
 
+Hint Constructors eval : core.
+Hint Constructors eval_bindings_nonrec : core.
+
 Inductive value : term -> Prop :=
   | V_LamAbs : forall x T t0,
-      value (LamAbs x T t0)
+    value (LamAbs x T t0)
   | V_Constant : forall u,
-      value (Constant u).
+    value (Constant u).
 
 Definition evaluatesTo t v : Prop := 
   (exists k, t =[k]=> v) /\ value v.
-Notation "t '⇓' v" := (evaluatesTo t v) (at level 100).
+Notation "t '⇓ₚ' v" := (evaluatesTo t v) (at level 100).
+
+From MetaCoq.Utils Require Import monad_utils.
+From Coq Require Import Lia.
+From VTL Require Import Env.
+
+Import MCMonadNotation.
+
+Fixpoint evaluate (t : term) (fuel : nat) : option term :=
+  match fuel with
+  | O => None
+  | S fuel' =>
+    match t with
+    | Let [] t0 =>
+      evaluate t0 fuel'
+    | Let ((TermBind (VarDecl x T) t1) :: bs) t0 =>
+      v1 <- evaluate t1 fuel';;
+      evaluate <{ [x := v1] {Let bs t0} }> fuel'
+    | Var x => None
+    | LamAbs x T t0 => Some t
+    | Apply f a =>
+      match evaluate f fuel' with
+      | Some (LamAbs x T t0) =>
+        v <- evaluate a fuel';;
+        evaluate (subst x v t0) fuel'
+      | _ => None end
+    | Constant u => Some t
+    | _ => None
+    end
+  end.
+
+Definition eval_pir (t : term) := evaluate t 1000.
+
+(* Eval vm_compute in eval_pir (Let [(TermBind (VarDecl "gal_id" <{ℤ}>) <{λ "x" :: ℤ, {Var "x"} }>)] (<{ {Var "gal_id"} ⋅ true }>)). *)
+
+Lemma eval_subst : forall x v2 t v fuel,
+  evaluate <{ [x := v2] t}> fuel = Some v ->
+  exists j, fuel >= j -> eval <{ [x := v2] t}> v j.
+Proof.
+  intros x v2 t. induction t; intros v fuel Heval;
+  destruct fuel; try discriminate; simpl in Heval.
+  - destruct l.
+    + simpl in *.
+      apply IHt in Heval as [j H].
+      eexists. constructor. econstructor.
+      eauto. now apply H.
+    + admit.
+  - simpl in *. destruct (x =? n).
+    + admit.
+    + discriminate.
+  - simpl. destruct (x =? b) eqn:Heq;
+    now inversion Heval.
+  - destruct (evaluate <{ [x := v2] t1 }> fuel) eqn:Hev1.
+    destruct (evaluate <{ [x := v2] t2 }> fuel) eqn:Hev2.
+    destruct t; try discriminate.
+    destruct (IHt1 (LamAbs b t t3) fuel Hev1) as [j1 Hsub1].
+    destruct (IHt2 t0 fuel Hev2) as [j2 Hsub2].
+    eexists. intros. simpl. 
+    econstructor. eauto. 
+    apply Hsub1. lia.
+    apply Hsub2. lia.
+    admit. destruct t; discriminate. inversion Heval.
+  - inversion Heval. simpl. eexists. eauto.
+Admitted.
+
+Lemma eval_reflect : forall t v fuel,
+  evaluate t fuel = Some v ->
+  exists j, fuel >= j -> eval t v j.
+Proof.
+  intros t. induction t; intros v fuel Heval;
+  destruct fuel; try discriminate; simpl in Heval.
+  - induction l.
+    + apply IHt in Heval as [j Heval].
+      exists (S j). intros. assert (fuel >= j) by lia.
+      apply Heval in H0.
+      constructor. econstructor. rewrite Nat.add_1_r. auto.
+      apply H0.
+    + eexists. intros.
+      destruct a, v0; try discriminate.
+      constructor. econstructor. eauto.
+      * admit.
+      * admit.
+  - inversion Heval. eauto.
+  - destruct (evaluate t1 fuel) eqn:Hev1; [|discriminate].
+    destruct t; try discriminate.
+    destruct (evaluate t2 fuel) eqn:Hev2; [|discriminate].
+    apply IHt1 in Hev1. destruct Hev1 as [j1 Hev1].
+    apply IHt2 in Hev2. destruct Hev2 as [j2 Hev2].
+    apply eval_subst in Heval as [j3 Hev3].
+    exists (j1 + j2 + 1 + j3). econstructor. eauto.
+    apply Hev1. lia.
+    apply Hev2. lia.
+    apply Hev3. lia.
+  - now inversion Heval.
+Admitted.

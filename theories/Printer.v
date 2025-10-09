@@ -25,7 +25,7 @@ Definition plus_ast : term :=
 
 (* We test the pipeline starting from the λ□ identity function *)
 Definition test_pir_ast := (translate_unsafe nil identity_EAst ann_id).
-Eval cbv in (print_as_program test_pir_ast).
+(* Eval cbv in (print_as_program test_pir_ast). *)
 (* Definition main : IO unit :=
   chan <- open_out "./output/test.pir" ;;
   output_string chan (print_as_program test_pir_ast) ;;
