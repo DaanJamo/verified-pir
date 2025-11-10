@@ -5,6 +5,7 @@ theories/PIR.v
 theories/Pipeline.v
 theories/Pretty.v
 theories/Printer.v
+theories/PrettyPipeline.v
 theories/Semantics.v
 theories/Semantics/BigStepPIR.v
 theories/Subset.v

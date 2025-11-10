@@ -163,6 +163,17 @@ Fixpoint evaluate (t : term) (fuel : nat) : option term :=
 
 Definition eval_pir (t : term) := evaluate t 1000.
 
+From VTL Require Import Pretty.
+
+Definition eval_pir_unsafe (t : term) :=
+  match eval_pir t with
+  | Some t' => t'
+  | None => Error (UNDEFINED ("Evaluation of (" ++ show_term t ++ ") has failed."))
+  end.
+
+Definition eval_and_print_pir (t : term) := 
+  print_as_program (eval_pir_unsafe t).
+
 (* Eval vm_compute in eval_pir (Let [(TermBind (VarDecl "gal_id" <{ℤ}>) <{λ "x" :: ℤ, {Var "x"} }>)] (<{ {Var "gal_id"} ⋅ true }>)). *)
 
 Lemma eval_subst : forall x v2 t v fuel,

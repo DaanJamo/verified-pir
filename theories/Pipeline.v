@@ -7,7 +7,7 @@ From MetaCoq.Erasure.Typed Require Import Annotations TypeAnnotations Erasure Ut
 From MetaCoq.Erasure.Typed Require Import Extraction ResultMonad Optimize.
 From MetaCoq.ErasurePlugin Require Import Erasure Loader.
 
-From VTL Require Import PIR BigStepPIR.
+From VTL Require Import PIR BigStepPIR Utils.
 From VTL Require Import Translation Semantics Subset.
 
 (* Verified PIR extraction: Gallina ▷ PCUIC ▷ λ□T ▷ PIR *)
@@ -24,18 +24,13 @@ Import Common.Transform.Transform.
 
 #[local] Obligation Tactic := program_simpl.
 
-Print ETransform.typed_erasure_pre.
-Print EWellformed.wellformed.
+(* Print ETransform.typed_erasure_pre.
+Print EWellformed.wellformed. *)
 
-Definition typed_eprogram := (∑ env : ExAst.global_env, env_annots box_type env) * kername.
 (* Definition typed_eterm := (∑ et : EAst.term, annots box_type et). *)
 
 Definition error_epT (err : string) : typed_eprogram := 
-  (([]; tt), (MPfile [], "failed to erase program: " ^ (s_to_bs err))).  
-
-Definition lookup_constant_body (env : ExAst.global_env) kn : option EAst.term :=
-  cst <- lookup_constant env kn ;;
-  cst_body cst.
+  (([]; tt), (MPfile [], "failed to erase program: " ^ (s_to_bs err))).
 
 Definition eval_typed_eprogram (epT : typed_eprogram) (v : EAst.term) :=
   match epT with
@@ -75,32 +70,28 @@ Definition extract_no_opt_args :=
 
 Local Open Scope string_scope.
 
+(* Ignored dependencies are still erased so the program can match on them,
+   including positive brought into scope by Z which does not match our integer type *)
 Definition translate_env (Σ : Ast.Env.global_env) (dearg : bool)
     (include : KernameSet.t) (ignore : list kername) : result (∑ eΣ, env_annots box_type eΣ) string.
 Proof.
   set (args := if dearg then extract_opt_args else extract_no_opt_args).
   set (fun kn => existsb (eq_kername kn) ignore) as to_ignore.
-  unshelve epose proof (annot_extract_template_env args Σ include to_ignore _) as env_ann.
+  unshelve epose proof (annot_extract_template_env args Σ include to_ignore _) as ann_env.
   - destruct dearg.
     + constructor;[|constructor]. apply annot_dearg_transform.
     + constructor.
   - destruct extract_template_env as [eΣ|].
-    + exact (Ok (eΣ; env_ann)).
-    + exact (Err "could not translate environment"%string).
+    + exact (Ok (eΣ; ann_env)).
+    + exact (Err "could not translate environment").
 Defined.
 
-(* Definition eΣT := Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) [].
-Definition eΣ : global_context := Eval cbv in
-  match eΣT with
-  | Ok (eΣ; _) => ExAst.trans_env eΣ
-  | Err _ => []
-  end.
-
-Eval vm_compute in EWellformed.wellformed eΣ (List.length eΣ) (tLambda (nNamed "x"%bs) tBox). *)
+(* Eval vm_compute in (fun kn => existsb (eq_kername kn) (List.app pir_ignore_default [])) <%% Z %%>. *)
+(* Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) []. *)
 
 Definition translate_program (p : Ast.Env.program) (dearg : bool) : typed_eprogram :=
   match to_kername p.2 with
-  | Some kn => (* also get/ignore dependencies? *)
+  | Some kn =>
     match (translate_env p.1 dearg (KernameSet.singleton kn) []) with
     | Ok epT => (epT, kn)
     | Err e => error_epT e
@@ -108,49 +99,20 @@ Definition translate_program (p : Ast.Env.program) (dearg : bool) : typed_eprogr
   | None => error_epT "term is not a constant"
   end.
 
-Definition translate_constant
-           (Σ : ExAst.global_env)
-           (cst : ExAst.constant_body)
-           (ann : constant_body_annots box_type cst)
-           : result term string.
-Proof.
-  destruct cst as [ty body].
-  destruct body as [t|].
-  - destruct (translate_term remap_env [] t ann) as [t'|].
-    + exact (Ok t').
-    + exact (Err ("failed to translate term: " ++ (bs_to_s print_term Σ t))).
-  - exact (Err ("body of definition is empty")).
-Defined.
-
-Definition translate_global_decl 
-           (Σ : ExAst.global_env)
-           (decl : ExAst.global_decl)
-           (decl_ann : global_decl_annots box_type decl)
-           : result term string :=
-  match decl, decl_ann with
-  | ConstantDecl cst, cst_ann => translate_constant Σ cst cst_ann
-  | _, _ => Err "failed to translate global decl"
-  end.
-
-Definition translate_typed_eprogram (epT : typed_eprogram) :=
-  let '((eΣ; env_ann), kn) := epT in
-  match bigprod_find (fun '(k, _, _) _ => eq_kername k kn) env_ann with
-  | Some (((_, _), decl); decl_annots) => translate_global_decl eΣ decl decl_annots 
-  | None => Err "couldn't find kername in environment"
-  end.
-
 (* translate without going through the partially verified pipeline *)
-Definition compile_to_pir_directly (p : Ast.Env.program) (dearg : bool) :=
-  translate_typed_eprogram (translate_program p dearg).
+Definition compile_pir_directly (p : Ast.Env.program) (dearg : bool) :=
+  translate_typed_eprogram remap_env (translate_program p dearg).
 
-(* Eval cbv in compile_to_pir_directly <# gal_id #> false. *)
+(* Definition const_example := gal_id.
+Eval cbv in translate_program <# const_example #> false.
+Eval cbv in compile_pir_directly <# const_example #> false. *)
 
 Definition translatable_program (p : Ast.Env.program) : Prop :=
   exists epT, translate_program p = epT.
 
 (* no Prop => no axioms => no empty constant bodies? *)
 Definition translatable_typed_eprogram (epT : typed_eprogram) : Prop :=
-  let '((eΣ; env_ann), kn) := epT in
+  let '((eΣ; ann_env), kn) := epT in
   match lookup_constant_body eΣ kn with
   | Some t => InSubset [] t
   | None => False
@@ -192,18 +154,18 @@ Program Definition lbt_to_pir_transform :
   {| name := "translate λ□T to pir"%bs;
      pre := translatable_typed_eprogram;
      transform p _ := 
-      match translate_typed_eprogram p with
+      match translate_typed_eprogram remap_env p with
       | Ok t' => (tt, t')
       | Err e => (tt, Error (UNDEFINED e))
       end;
      post _ := True;
-     obseq p _ p' v v' := exists ann_v, translatesTo remap_env [] v ann_v v';
+     obseq p _ p' v v' := exists ann_v, translatesTo remap_env [] [] v ann_v v';
      preservation _ _ _ _ := _
   |}.
 Next Obligation.
-  unfold eval_pir_program.
+  (* unfold eval_pir_program.
   unfold translatable_typed_eprogram in *.
-  destruct p as [[eΣ env_ann] kn].
+  destruct p as [[eΣ ann_env] kn].
   destruct e.
   destruct (lookup_constant_body eΣ kn) eqn:Hlookup; try discriminate.
   apply (subset_is_translatable remap_env) in t1 as Htl.
@@ -213,11 +175,11 @@ Next Obligation.
   specialize (stlc_correct (trans_env eΣ) t2 ann_t t' t0 ann_v H t1 sub_v tl).
   intros [ann [v' [k [tlt ev]]]].
   exists v'. split.
-  - sq. exists k. destruct (translate_typed_eprogram ((eΣ; env_ann), kn)) as [t''|].
+  - sq. exists k. destruct (translate_typed_eprogram ((eΣ; ann_env), kn)) as [t''|].
     + simpl. assert (t' = t''). admit. subst t''. apply ev.
     + simpl. admit.
-  - eauto.
-  Admitted.
+  - eauto. *)
+Admitted.
 
 Program Definition verified_pir_extraction :=
   gallina_to_lbt_transform ▷ lbt_to_pir_transform.
@@ -227,11 +189,5 @@ Admitted.
 Definition compile_pir (p : Ast.Env.program) : PIR.term :=
   (run verified_pir_extraction p I).2.
 
-From VTL Require Import Pretty.
-
 Definition compile_and_print_pir (p : Ast.Env.program) :=
-  print_as_program (compile_pir p).
-  
-Print gal_id.
-MetaCoq Quote Recursively Definition qid := gal_id.
-Eval vm_compute in compile_and_print_pir qid.
+  Pretty.print_as_program (compile_pir p).
