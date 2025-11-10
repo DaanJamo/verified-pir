@@ -13,22 +13,14 @@ Import Coq.Strings.String.
 Import Coq.Logic.Eqdep.
 Import MCMonadNotation.
 
-Notation "t' '⇓ₚ' v'" :=
-  (evaluatesTo t' v')
-  (at level 50).
-
-Ltac solve_pir_eval := split; [(eexists ; eauto using eval) | constructor].
-Ltac tl_reflect Htl := apply translate_reflect in Htl as ?tlt.
-Ltac invs H := inversion H; subst.
-
 Definition gal_id :=
   tLambda (BasicAst.nNamed "x"%bs) (tRel 0).
 
-Lemma weaken_ctx : forall Γ x t ann t',
-  translatesTo remap_env Γ t ann t' ->
-  translatesTo remap_env (Γ ++ [x]) t ann t'.
+Lemma weaken_ctx : forall Σ' Γ x t ann t',
+  translatesTo remap_env Σ' Γ t ann t' ->
+  translatesTo remap_env Σ' (Γ ++ [x]) t ann t'.
 Proof.
-  intros Γ x t. revert Γ.
+  intros Σ' Γ x t. revert Γ.
   induction t; intros Γ ann t' tlt;
   inversion tlt; subst.
   - constructor.
@@ -46,13 +38,14 @@ Proof.
     apply tlt_app.
     + apply IHt1; assumption.
     + apply IHt2; assumption.
+  - now eapply tlt_const.
 Qed.
 
-Lemma weaken_ctx_many : forall Γ1 Γ2 t ann t',
-  translatesTo remap_env Γ1 t ann t' ->
-  translatesTo remap_env (Γ1 ++ Γ2) t ann t'.
+Lemma weaken_ctx_many : forall Σ' Γ1 Γ2 t ann t',
+  translatesTo remap_env Σ' Γ1 t ann t' ->
+  translatesTo remap_env Σ' (Γ1 ++ Γ2) t ann t'.
 Proof.
-  intros Γ1 Γ2 t. revert Γ1. induction t;
+  intros Σ' Γ1 Γ2 t. revert Γ1. induction t;
   intros Γ1 ann t' tlt_t; 
   inversion tlt_t; subst.
   - constructor.
@@ -70,14 +63,15 @@ Proof.
     apply tlt_app.
     + apply IHt1; assumption.
     + apply IHt2; assumption.
+  - now eapply tlt_const.
 Qed.
 
-Lemma strengthen_shadowed_ctx : forall Γ x b ann_b b',
+Lemma strengthen_shadowed_ctx : forall Σ' Γ x b ann_b b',
   In x Γ ->
-  translatesTo remap_env (Γ ++ [x]) b ann_b b' ->
-  translatesTo remap_env Γ b ann_b b'.
+  translatesTo remap_env Σ' (Γ ++ [x]) b ann_b b' ->
+  translatesTo remap_env Σ' Γ b ann_b b'.
 Proof.
-  intros Γ x b. revert Γ. induction b;
+  intros Σ' Γ x b. revert Γ. induction b;
   intros Γ ann_b b' Hin tlt; inversion tlt; subst.
   - constructor.
   - apply tlt_rel.
@@ -103,6 +97,7 @@ Proof.
     apply tlt_app.
     + apply IHb1; assumption.
     + apply IHb2; assumption.
+  - now eapply tlt_const.
 Qed.
 
 Definition annot_csubst {v} (ann_v : annots box_type v) :
@@ -132,12 +127,12 @@ Proof.
     exact (f _ _ X).
 Defined.
 
-Lemma csubst_shadowed : forall Γ x b ann_b b' v ann_v,
+Lemma csubst_shadowed : forall Σ' Γ x b ann_b b' v ann_v,
   In x Γ ->
-  translatesTo remap_env (Γ ++ [x]) b ann_b b' ->
-  translatesTo remap_env (Γ ++ [x]) (csubst v (List.length Γ) b) (annot_csubst ann_v (List.length Γ) ann_b) b'.
+  translatesTo remap_env Σ' (Γ ++ [x]) b ann_b b' ->
+  translatesTo remap_env Σ' (Γ ++ [x]) (csubst v (List.length Γ) b) (annot_csubst ann_v (List.length Γ) ann_b) b'.
 Proof.
-  intros Γ x b. revert Γ. induction b; 
+  intros Σ' Γ x b. revert Γ. induction b; 
   intros Γ ann_b b' v ann_v Hin tlt; inversion tlt.
   - constructor.
   - simpl. unfold find_index_string in H1.
@@ -160,17 +155,18 @@ Proof.
     simpl. apply tlt_app.
     + apply IHb1; auto.
     + apply IHb2; auto.
+  - now eapply tlt_const.
 Qed.
 
-Lemma csubst_correct : forall Γ x v b ann_v ann_b v' b',
+Lemma csubst_correct : forall Σ' Γ x v b ann_v ann_b v' b',
   ~ In x Γ ->
-  translatesTo remap_env nil v ann_v v' ->
-  translatesTo remap_env (Γ ++ [x]) b ann_b b' ->
-  translatesTo remap_env Γ (csubst v (List.length Γ) b)
+  translatesTo remap_env Σ' nil v ann_v v' ->
+  translatesTo remap_env Σ' (Γ ++ [x]) b ann_b b' ->
+  translatesTo remap_env Σ' Γ (csubst v (List.length Γ) b)
   (annot_csubst ann_v (List.length Γ) ann_b)
   (BigStepPIR.subst x v' b').
 Proof.
-  intros Γ x v b. revert Γ. induction b;
+  intros Σ' Γ x v b. revert Γ. induction b;
   intros Γ ann_v ann_b v' b' HnIn tlt_v tlt_b;
   inversion tlt_b; subst.
   - constructor.
@@ -193,9 +189,9 @@ Proof.
     + apply tlt_lambda. 
       * assumption.
       * subst x'. assert (Hin : In x (x::Γ)) by now left.
-        specialize (csubst_shadowed (x :: Γ) x b ann_b0 b'0 v ann_v Hin H4).
+        specialize (csubst_shadowed Σ' (x :: Γ) x b ann_b0 b'0 v ann_v Hin H4).
         intros. simpl in H.
-        specialize (strengthen_shadowed_ctx (x :: Γ) x (csubst v (S #|Γ|) b) (annot_csubst ann_v (S #|Γ|) ann_b0) b'0 Hin H) as Hctx'.
+        specialize (strengthen_shadowed_ctx Σ' (x :: Γ) x (csubst v (S #|Γ|) b) (annot_csubst ann_v (S #|Γ|) ann_b0) b'0 Hin H) as Hctx'.
         apply Hctx'.
     + apply tlt_lambda.
       * assumption.
@@ -206,9 +202,9 @@ Proof.
       * assumption.
       * now apply IHb1. 
       * subst x'. assert (Hin : In x (x::Γ)) by now left.
-        specialize (csubst_shadowed (x :: Γ) x b2 ann_b0 b'0 v ann_v Hin H6).
+        specialize (csubst_shadowed Σ' (x :: Γ) x b2 ann_b0 b'0 v ann_v Hin H6).
         intros. simpl in H.
-        specialize (strengthen_shadowed_ctx (x :: Γ) x (csubst v (S #|Γ|) b2) (annot_csubst ann_v (S #|Γ|) ann_b0) b'0 Hin H) as Hctx'.
+        specialize (strengthen_shadowed_ctx Σ' (x :: Γ) x (csubst v (S #|Γ|) b2) (annot_csubst ann_v (S #|Γ|) ann_b0) b'0 Hin H) as Hctx'.
         apply Hctx'.
     + apply tlt_let.
       * assumption.
@@ -219,20 +215,21 @@ Proof.
     specialize (IHb1 Γ ann_v ann_t1 v' t1' HnIn tlt_v H1).
     specialize (IHb2 Γ ann_v ann_t2 v' t2' HnIn tlt_v H4).
     now apply tlt_app.
-Qed.
+  - simpl. (* shadowed or in Σ' *) admit.
+Admitted.
 
-Theorem stlc_correct : forall Σ
+Theorem stlc_correct : forall Σ Σ'
   t (ann_t : annots box_type t) t'
   v (ann_v : annots box_type v),
   Σ e⊢ t ⇓ v ->
   InSubset [] t ->
   InSubset [] v ->
-  translate_term remap_env [] t ann_t = Some t' ->
+  translate_term remap_env Σ' [] t ann_t = Some t' ->
   exists ann_v v' k,
-    translatesTo remap_env [] v ann_v v' /\
+    translatesTo remap_env Σ' [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ t ann_t t' v ann_v ev sub_t sub_v tlt.
+  intros Σ Σ' t ann_t t' v ann_v ev sub_t sub_v tlt.
   apply translate_reflect in tlt; try apply NoDup_nil.
   revert t' tlt; induction ev; 
   intros t'' tlt; inversion sub_t.
@@ -246,7 +243,7 @@ Proof with (eauto using eval).
     destruct (IHev1 ann_t1 ann_l H1 sub_lambda t1' H5) as [ann_v1 [v1' [k1 [tlt_l ev_l]]]].
     destruct (IHev2 ann_t2 ann_a H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
     inversion tlt_l. subst.
-    assert (tlt_sb : translatesTo remap_env [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
+    assert (tlt_sb : translatesTo remap_env Σ' [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
     { eapply csubst_correct; auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev3 (annot_csubst ann_v2 0 ann_b) ann_v sub_sb sub_v (subst x' v2' b') tlt_sb).
@@ -263,7 +260,7 @@ Proof with (eauto using eval).
     evar (ann_brv : annots box_type b0').
     eapply val_in_sub in ev1 as sub_br; eauto.
     destruct (IHev1 ann_br ann_brv H1 sub_br br' H10) as [ann_v1 [v1' [k1 [tlt_br ev_br]]]].
-    assert (tlt_sb : translatesTo remap_env [] (csubst b0' 0 b1) (annot_csubst ann_v1 0 ann_b) (BigStepPIR.subst x'0 v1' b')).
+    assert (tlt_sb : translatesTo remap_env Σ' [] (csubst b0' 0 b1) (annot_csubst ann_v1 0 ann_b) (BigStepPIR.subst x'0 v1' b')).
     { eapply csubst_correct; auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev2 (annot_csubst ann_v1 0 ann_b) ann_v sub_sb sub_v (subst x'0 v1' b') tlt_sb).
@@ -287,6 +284,10 @@ Proof with (eauto using eval).
   - (* fix unguarded *)
     eapply val_in_sub in ev1 as sub_fix; eauto.
     inversion sub_fix.
+  - (* const *)
+    (* evar (ann_b : annots box_type body).
+    specialize (IHev ann_b ann_v). unfold EGlobalEnv.declared_constant in isdecl. *)
+    admit.
   - (* mkApps constr *)
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_constr _].

@@ -572,10 +572,34 @@ Proof.
   - admit.
 Admitted.
 
-From MetaCoq.Erasure.Typed Require Import ResultMonad.
+From MetaCoq.Common Require Import Kernames.
+
+Definition kn_to_s (kn : kername) : string :=
+  bytestring.String.to_string (string_of_kername kn).
+
+From MetaCoq.Erasure.Typed Require Import ExAst ResultMonad Utils.
 
 Definition res_to_opt {T E : Type} (res : result T E) : option T :=
   match res with
   | Ok v => Some v
   | Err _ => None
+  end.
+
+Definition ind_to_s (ind_kn : kername) : string :=
+  match ind_kn with
+  | (MPfile ["BinNums"%bs; "Numbers"%bs; "Coq"%bs],   "Z"%bs) => "ℤ"
+  | (MPfile ["Datatypes"%bs; "Init"%bs; "Coq"%bs], "unit"%bs) => "unit"
+  | (MPfile ["Datatypes"%bs; "Init"%bs; "Coq"%bs], "bool"%bs) => "bool"
+  | _ => kn_to_s ind_kn
+  end.
+
+Fixpoint print_box_type (bt : box_type) : string :=
+  match bt with
+  | TBox => "□"
+  | TAny => "𝕋"
+  | TArr dom codom => print_box_type dom ++ " → " ++ print_box_type codom
+  | TApp t1 t2 => print_box_type t1 ++ " " ++ print_box_type t2
+  | TVar i => "TVar" ++ bytestring.String.to_string (show i)
+  | TInd d => ind_to_s d.(inductive_mind)
+  | TConst d => bytestring.String.to_string d.2
   end.

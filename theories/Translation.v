@@ -1,24 +1,23 @@
-From MetaCoq.Erasure.Typed Require Import Utils.
-From MetaCoq.Erasure.Typed Require Import ExAst.
+From MetaCoq.Erasure Require Import EAstUtils.
+From MetaCoq.Erasure.Typed Require Import Utils ResultMonad.
 From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
-From MetaCoq.Erasure Require Import EAst EAstUtils.
 From MetaCoq.Utils Require Import MCList MCString MCPrelude utils.
 
 From VTL Require Import Env PIR Utils.
 
 From Coq Require Import String BinInt List.
 
-Import Kernames ListNotations.
+Import EAst ExAst.
+Import BasicAst Kernames ListNotations.
 Import MCMonadNotation.
-Import BasicAst EAst.
 
 Notation "'bs_to_s' s" := (bytestring.String.to_string s) (at level 200).
 Notation "'s_to_bs' s" := (bytestring.String.of_string s) (at level 200).
 Local Coercion bytestring.String.to_string : bytestring.String.t >-> string.
 
 Definition remap_ty (kn : kername) (uni : PIR.DefaultUni) := 
-  (bs_to_s (string_of_kername kn), PIR.Ty_Builtin uni).
+  (kn_to_s kn, PIR.Ty_Builtin uni).
 
 Definition remap_env : env PIR.ty :=
   [
@@ -30,16 +29,31 @@ Definition remap_env : env PIR.ty :=
 Definition remap_fun (kn : kername) (df : PIR.DefaultFun) :=
   (kn, PIR.Builtin df).
 
+Definition pir_ignore_default : list kername :=
+  [<%% positive %%>;
+   <%% Z %%>;
+   <%% unit %%>;
+   <%% bool %%>].
+
 Section translate.
 
 Context (TT : env PIR.ty).
 
-Definition gen_fresh_name na Γ :=
+Definition entry := kername * binderName * binding.
+
+Definition get_binder_names (Σ' : list entry) : list string :=
+  map (fun '(_, kn', _) => kn') Σ'.
+
+Definition gen_fresh_name na Σ' Γ :=
   match na with
-  | nAnon => gen_fresh "anon" Γ
-  | nNamed id => gen_fresh id Γ
+  | nAnon => gen_fresh "anon" (get_binder_names Σ' ++ Γ)
+  | nNamed id => gen_fresh id (get_binder_names Σ' ++ Γ) 
   end.
 
+Lemma gen_fresh_name_fresh : forall Σ' Γ na,
+  ~ In (gen_fresh_name na Σ' Γ) Γ.
+Admitted.
+  
 Definition translate_ty : box_type -> option PIR.ty :=
   fix go (ty : box_type) :=
   match ty with
@@ -48,12 +62,24 @@ Definition translate_ty : box_type -> option PIR.ty :=
     a' <- go a ;;
     b' <- go b ;;
     Some (PIR.Ty_Fun a' b')
-  | TInd ind => lookup TT (string_of_kername ind.(inductive_mind))
+  | TInd ind => lookup TT (kn_to_s ind.(inductive_mind))
   | _ => None
   end.
 
-Fixpoint translate_term (Γ : list string) (t : term) 
-                        {struct t} : annots box_type t -> option PIR.term :=
+(* interface so it is easy to add qualified part or change casing later *)
+Definition gen_fresh_binder_name (kn : kername) (bs : list string) :=
+  gen_fresh (kn.2) bs.
+
+Definition lookup_constant_body (env : ExAst.global_env) kn : option EAst.term :=
+  cst <- lookup_constant env kn ;;
+  cst_body cst.
+
+Definition lookup_entry (Σ' : list entry) (nm : kername) : option entry :=
+  find (fun '(kn, _, _) => eq_kername kn nm) Σ'.
+
+Fixpoint translate_term
+         (Σ' : list entry) (Γ : list string)
+         (t : term) {struct t} : annots box_type t -> option PIR.term :=
   match t return annots box_type t -> option PIR.term with
   | tBox => fun b_ty => Some (PIR.Constant (ValueOf DefaultUniUnit tt)) (* temporary constant *)
   | tRel n => fun b_ty =>
@@ -64,28 +90,89 @@ Fixpoint translate_term (Γ : list string) (t : term)
   | tLambda x b => fun '(ty, ann_b) =>
     match ty with
     | TArr br_ty _ =>
-      let x' := gen_fresh_name x Γ in
+      let x' := gen_fresh_name x Σ' Γ in
       br_ty' <- translate_ty br_ty ;;
-      b' <- translate_term (x' :: Γ) b ann_b ;;
+      b' <- translate_term Σ' (x' :: Γ) b ann_b ;;
       Some (LamAbs x' br_ty' b')
     | _ => None
     end
   | tLetIn x br b => fun '(ty, (ann_br, ann_b)) =>
     match ty with
     | TArr br_ty _ =>
-      let x' := gen_fresh_name x Γ in
+      let x' := gen_fresh_name x Σ' Γ in
       br_ty' <- translate_ty br_ty ;; 
-      br' <- translate_term Γ br ann_br ;;
-      b' <- translate_term (x' :: Γ) b ann_b ;;
+      br' <- translate_term Σ' Γ br ann_br ;;
+      b' <- translate_term Σ' (x' :: Γ) b ann_b ;;
       Some (Let [TermBind (VarDecl x' br_ty') br'] b')
     | _ => None
     end
   | tApp f a => fun '(_, (ann_f, ann_a)) =>
-    f' <- translate_term Γ f ann_f ;;
-    a' <- translate_term Γ a ann_a ;;
+    f' <- translate_term Σ' Γ f ann_f ;;
+    a' <- translate_term Σ' Γ a ann_a ;;
     Some (Apply f' a')
+  | tConst kn => fun bt =>
+    match lookup_entry Σ' kn with
+    | Some (_, kn', _)=> Some (Var kn')
+    | None => None end
   | _ => fun _ => None
   end.
+
+Definition translate_constant
+           (Σ' : list entry)
+           (cst : constant_body)
+           (kn : kername)
+           (ann_c : constant_body_annots box_type cst) : option entry.
+Proof.
+  destruct cst as [[params ty] body].
+  destruct body as [t|]; [|exact None]. (* no axioms allowed *)
+  destruct (translate_ty ty) as [ty'|]; [|exact None].
+  destruct (translate_term Σ' [] t ann_c) as [t'|]; [|exact None].
+  pose (kn' := gen_fresh_binder_name kn (map (fun '(_, nm, _) => nm) Σ')).
+  exact (Some (kn, kn', TermBind (VarDecl kn' ty' ) t')).
+Defined.
+
+Local Open Scope string_scope.
+
+Fixpoint translate_env (eΣ : global_env) : env_annots box_type eΣ -> result (list entry) string :=
+  match eΣ return env_annots box_type eΣ -> result (list entry) string with
+  | [] => fun _ => Ok []
+  | ((kn, deps, decl) :: decls) => fun '(ann_d, anns) =>
+    match translate_env decls anns with
+    | Ok Σ' =>
+      match decl, ann_d with
+      | ConstantDecl cst, ann_c =>
+        match translate_constant Σ' cst kn ann_c with
+        | Some entry => Ok (entry :: Σ')
+        | None => Err ("Failed to translate constant " ++ kn_to_s kn)
+        end
+      | _, _ => (* we ignore certain inductives until the remapping of inductives has been implemented *)
+        match find (fun nm => eq_kername kn nm) pir_ignore_default with
+        | Some res => Ok Σ'
+        | None => Err ("Inductive " ++ kn_to_s kn ++ " not found in translation table, 
+                       true inductives or type aliases are not supported yet") end
+      end
+    | Err e => Err e
+    end
+  end.
+
+Definition bind_pir_env (Σ' : list entry) (body : PIR.term) :=
+  Let (map (fun '(_, _, b) => b) (rev Σ')) body.
+
+Definition get_entry_body (e : entry) : PIR.term :=
+  match e with
+  | (_, _, TermBind (VarDecl _ _) t') => t' 
+  end.
+
+Definition typed_eprogram := (∑ env : ExAst.global_env, env_annots box_type env) * kername.
+
+Definition translate_typed_eprogram (epT : typed_eprogram) : result PIR.term string :=
+  let '((eΣ; ann_env), init) := epT in
+  match translate_env eΣ ann_env with
+  | Ok Σ' =>
+    match lookup_entry Σ' init with
+    | Some entry => Ok (bind_pir_env Σ' (get_entry_body entry))
+    | None => Err ("Initial definition " ++ kn_to_s init ++ " not found in environment.") end
+  | Err e => Err ("Failed to translate environment: " ++ e) end.
 
 Inductive translatesTypeTo : box_type -> PIR.ty -> Prop :=
   | tlty_tt : translatesTypeTo TBox (PIR.Ty_Builtin DefaultUniUnit)
@@ -97,25 +184,28 @@ Inductive translatesTypeTo : box_type -> PIR.ty -> Prop :=
       lookup TT (string_of_kername ind.(inductive_mind)) = Some ty' ->
       translatesTypeTo (TInd ind) ty'.
 
-Inductive translatesTo (Γ : list string) : forall (t : term),
+Inductive translatesTo (Σ' : list entry) (Γ : list string) : forall (t : term),
   annots box_type t -> PIR.term -> Prop :=
-  | tlt_tt : forall ann, translatesTo Γ tBox ann (Constant (ValueOf DefaultUniUnit tt))
+  | tlt_tt : forall ann, translatesTo Σ' Γ tBox ann (Constant (ValueOf DefaultUniUnit tt))
   | tlt_rel : forall n x ann,
       find_index_string Γ x = Some n ->
-      translatesTo Γ (tRel n) ann (Var x)
+      translatesTo Σ' Γ (tRel n) ann (Var x)
   | tlt_lambda : forall x x' arg_ty res_ty b ann_b arg_ty' b',
       translatesTypeTo arg_ty arg_ty' ->
-      translatesTo (x' :: Γ) b ann_b b' ->
-      translatesTo Γ (tLambda x b) (TArr arg_ty res_ty, ann_b) (LamAbs x' arg_ty' b')
+      translatesTo Σ' (x' :: Γ) b ann_b b' ->
+      translatesTo Σ' Γ (tLambda x b) (TArr arg_ty res_ty, ann_b) (LamAbs x' arg_ty' b')
   | tlt_let : forall x x' br_ty b_ty br b ann_br ann_b br_ty' br' b',
       translatesTypeTo br_ty br_ty' ->
-      translatesTo Γ br ann_br br' ->
-      translatesTo (x' :: Γ) b ann_b b' ->
-      translatesTo Γ (tLetIn x br b) (TArr br_ty b_ty, (ann_br, ann_b)) (Let [(TermBind (VarDecl x' br_ty') br')] b')
+      translatesTo Σ' Γ br ann_br br' ->
+      translatesTo Σ' (x' :: Γ) b ann_b b' ->
+      translatesTo Σ' Γ (tLetIn x br b) (TArr br_ty b_ty, (ann_br, ann_b)) (Let [(TermBind (VarDecl x' br_ty') br')] b')
   | tlt_app : forall t1 t2 ann_t1 ann_t2 ty t1' t2',
-      translatesTo Γ t1 ann_t1 t1' ->
-      translatesTo Γ t2 ann_t2 t2' ->
-      translatesTo Γ (tApp t1 t2) (ty, (ann_t1, ann_t2)) (PIR.Apply t1' t2').
+      translatesTo Σ' Γ t1 ann_t1 t1' ->
+      translatesTo Σ' Γ t2 ann_t2 t2' ->
+      translatesTo Σ' Γ (tApp t1 t2) (ty, (ann_t1, ann_t2)) (PIR.Apply t1' t2')
+  | tlt_const : forall kn kn' br ann,
+      lookup_entry Σ' kn = Some (kn, kn', br) ->
+      translatesTo Σ' Γ (tConst kn) ann (Var kn').
 
 Theorem translate_type_reflect : forall ty ty',
   translate_ty ty = Some ty' -> translatesTypeTo ty ty'.
@@ -132,11 +222,11 @@ Proof.
     + now apply tlty_ind.
 Qed.
 
-Theorem translate_reflect : forall Γ t t' (ann : annots box_type t),
+Theorem translate_reflect : forall Σ' Γ t t' (ann : annots box_type t),
   NoDup Γ ->
-  translate_term Γ t ann = Some t' -> translatesTo Γ t ann t'.
+  translate_term Σ' Γ t ann = Some t' -> translatesTo Σ' Γ t ann t'.
 Proof.
-  intros Γ t. revert Γ. induction t; try discriminate; 
+  intros Σ' Γ t. revert Γ. induction t; try discriminate; 
   intros Γ t' ann nodup tl_t; inversion tl_t as [Ht].
   - apply tlt_tt.
   - destruct (nth_error Γ n) eqn:El; [|discriminate].
@@ -144,52 +234,67 @@ Proof.
     now apply nth_error_to_find_index in El. 
   - destruct ann as [[] ann_b]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
-    destruct (translate_term (gen_fresh_name na Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
-    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Γ :: Γ)).
-    apply NoDup_cons; try assumption. 
-    unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
-    specialize (IHt (gen_fresh_name na Γ :: Γ) b' ann_b nodup' tl_b).
+    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
+    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Σ' Γ :: Γ)).
+    apply NoDup_cons; try assumption.
+    apply gen_fresh_name_fresh.
+    specialize (IHt (gen_fresh_name na Σ' Γ :: Γ) b' ann_b nodup' tl_b).
     apply (translate_type_reflect dom br_ty') in tl_ty.
     now apply tlt_lambda.
   - destruct ann as [[] [ann_br ann_b]]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
-    destruct (translate_term Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
-    destruct (translate_term (gen_fresh_name na Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; [|discriminate].
-    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Γ :: Γ)).
+    destruct (translate_term Σ' Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
+    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; [|discriminate].
+    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Σ' Γ :: Γ)).
     apply NoDup_cons; try assumption.
-    unfold gen_fresh_name. destruct na; apply gen_fresh_fresh.
+    apply gen_fresh_name_fresh.
     specialize (IHt1 Γ br' ann_br nodup tl_br).
-    specialize (IHt2 (gen_fresh_name na Γ :: Γ) b' ann_b nodup' tl_b).
+    specialize (IHt2 (gen_fresh_name na Σ' Γ :: Γ) b' ann_b nodup' tl_b).
     apply (translate_type_reflect dom br_ty') in tl_ty.
     now apply tlt_let.
   - destruct ann as [ty [ann_t1 ann_t2]].
-    destruct (translate_term Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
-    destruct (translate_term Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
+    destruct (translate_term Σ' Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
+    destruct (translate_term Σ' Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
     inversion Ht as [Ht'].
     specialize (IHt1 Γ t1' ann_t1 nodup tl_t1).
     specialize (IHt2 Γ t2' ann_t2 nodup tl_t2).
     now apply tlt_app.
+  - destruct (lookup_entry Σ' k) as [[[kn kn'] br]|] eqn:El; [|discriminate].
+    inversion Ht as [Ht']. apply find_some in El as Hl.
+    destruct Hl as [Hin Heq]. apply ReflectEq.eqb_eq in Heq. subst.
+    now eapply tlt_const.
 Qed.
 
 End translate.
 
 Definition translate_unsafe Γ (t : term) (ann : annots box_type t) := 
-  with_default (PIR.Error (PIR.UNDEFINED "TranslationFailed")) (translate_term remap_env Γ t ann).
+  with_default (PIR.Error (PIR.UNDEFINED "TranslationFailed")) (translate_term remap_env [] Γ t ann).
 
 (* Lambda Box T is the combination of an EAst term with a dependent tree of its types
   For now, we pass manual annotations until I set up a proper pipeline *)
 Definition identity_EAst : term :=
-  tLambda (nNamed (s_to_bs "y")) 
+  tLambda (nNamed "x") 
     (tRel 0).
-
-Definition let_test : term :=
-  tLetIn (nNamed "x") tBox (tApp identity_EAst (tRel 1)).
 
 Definition Z_ind := TInd (mkInd <%% Z %%> 0).
 Definition ann_id :=
   (TArr Z_ind Z_ind, Z_ind).
 
-Eval cbv in (identity_EAst, ann_id).
-Eval cbv in (translate_unsafe nil identity_EAst ann_id).
+Definition id_twice := tLambda (nNamed "y") (tApp (tConst <%% identity_EAst %%>) (tRel 0)).
+Definition ann_twice := (TArr Z_ind Z_ind, (Z_ind, (TArr Z_ind Z_ind, Z_ind))).
 
-Eval cbv in (translate_unsafe nil let_test, (Z_ind, Z_ind, ann_id)).
+Definition c_id : constant_body := Build_constant_body ([], ann_id.1) (Some identity_EAst).
+Definition decl_id := (<%% identity_EAst %%>, false, Ex.ConstantDecl c_id).
+
+Definition c_twice := Build_constant_body ([], ann_twice.1) (Some id_twice).
+Definition decl_twice := (<%% id_twice %%>, false, Ex.ConstantDecl c_twice).
+
+From VTL Require Import BigStepPIR.
+
+Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))).
+(* Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>).
+Eval vm_compute in match (translate_typed_eprogram remap_env (example, <%% id_twice %%>)) with
+  | Ok t' => eval_and_print_pir t'
+  | Err e => e end. *)
+
+(* Eval cbv in (translate_unsafe [] identity_EAst ann_id). *)

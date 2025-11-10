@@ -1,6 +1,9 @@
-From MetaCoq.Erasure.Typed Require Import Annotations Utils WcbvEvalAux.
-From MetaCoq.Erasure Require Import EAst ECSubst ELiftSubst.
+From MetaCoq.Common Require Import Kernames.
 From MetaCoq.Utils Require Import utils.
+From MetaCoq.Erasure.Typed Require Import Utils ResultMonad.
+From MetaCoq.Erasure.Typed Require Import Annotations WcbvEvalAux.
+From MetaCoq.Erasure Require Import EAst ECSubst ELiftSubst.
+From MetaCoq.Erasure.Typed Require Import ExAst.
 
 From VTL Require Import PIR BigStepPIR Translation Utils.
 
@@ -24,7 +27,25 @@ Inductive InSubset (Γ : list string) : EAst.term -> Prop :=
     InSubset Γ f ->
     InSubset Γ a ->
     InSubset Γ (tApp f a)
+  | S_tConst : forall eΣ kn cb,
+    lookup_constant_body eΣ kn = Some cb ->
+    InSubset [] cb ->
+    (* translate_env remap_env eΣ ann_env = Ok Σ' ->
+    lookup_entry Σ' kn = Some (kn, kn', br) -> *)
+    InSubset Γ (tConst kn)
 .
+
+Definition declared_constant (eΣ : global_env) kn c : Prop :=
+  lookup_env eΣ kn = Some (ConstantDecl c).
+
+Definition all_in_subset eΣ :=
+  forall c decl, declared_constant eΣ c decl -> exists t, cst_body decl = Some t /\ InSubset [] t.
+
+Inductive ProgramInSubset (eΣ : global_env) (init : kername) : Prop :=
+  | PS_Constants :
+    all_in_subset eΣ ->
+    (exists t, lookup_constant_body eΣ init = Some t) ->
+    ProgramInSubset eΣ init.
 
 Lemma mkApps_in_subset : forall Γ us f,
   InSubset Γ (mkApps f us) ->
@@ -54,6 +75,7 @@ Proof.
   - eapply S_tLambda. apply IHsub.
   - eapply S_tLet. apply IHsub1. apply IHsub2.
   - apply S_tApp; assumption.
+  - eapply S_tConst; eassumption.
 Qed.
 
 Lemma subset_weaken_many : forall Γ1 Γ2 t,
@@ -68,6 +90,7 @@ Proof.
   - eapply S_tLambda. apply IHsub.
   - eapply S_tLet. apply IHsub1. apply IHsub2.
   - apply S_tApp; assumption.
+  - eapply S_tConst; eassumption.
 Qed.
 
 Lemma csubst_in_sub' : forall (Γ1 Γ2 : list string) x v b,
@@ -99,6 +122,7 @@ Proof.
   - simpl. constructor. 
     apply (IHb1 Γ1 x); assumption.
     apply (IHb2 Γ1 x); assumption.
+  - eapply S_tConst; eassumption.
 Qed.
 
 Lemma csubst_in_sub : forall (Γ : list string) x v b,
@@ -129,6 +153,7 @@ Proof.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - apply IHev1 in H1. inversion H1.
+  - (* const *) admit.
   - apply IHev1 in H1. apply mkApps_in_subset in H1 as [Hf _]. inversion Hf.
   - constructor. apply IHev1. apply H1. apply IHev2. apply H2.
   - constructor.
@@ -137,8 +162,8 @@ Proof.
   - assumption.
 Admitted.
 
-Lemma tlt_in_sub : forall TT Γ t ann t',
-  translatesTo TT Γ t ann t' ->
+Lemma tlt_in_sub : forall TT Σ' Γ t ann t',
+  translatesTo TT Σ' Γ t ann t' ->
   InSubset Γ t.
 Proof.
   intros. induction H; subst.
@@ -147,14 +172,15 @@ Proof.
   - now eapply S_tLambda.
   - now eapply S_tLet.
   - now apply S_tApp.
-Qed.
+  - eapply S_tConst.
+Admitted.
 
 (* notion of typablility under the remapping *)
-Lemma subset_is_translatable : forall TT Γ t,
+Lemma subset_is_translatable : forall TT Σ' Γ t,
   InSubset Γ t ->
-  exists ann t', translate_term TT Γ t ann = Some t'.
+  exists ann t', translate_term TT Σ' Γ t ann = Some t'.
 Proof.
-  intros TT Γ t sub. 
+  intros TT Σ' Γ t sub. 
   induction sub; subst.
   - eexists _, _. constructor.
   - eexists. exists (Var res).
@@ -162,17 +188,17 @@ Proof.
   - destruct IHsub as [ann_b [b' tl_b]].
     evar (f_ty : ExAst.box_type).
     evar (f_ty' : PIR.ty).
-    simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh_name x Γ) f_ty' b').
+    simpl. eexists ((ExAst.TArr f_ty _), ann_b), (LamAbs (gen_fresh_name x Σ' Γ) f_ty' b').
     assert (translate_ty TT f_ty = Some f_ty'). admit.
-    assert (x' = gen_fresh_name x Γ). admit. rewrite <- H0.
+    assert (x' = gen_fresh_name x Σ' Γ). admit. rewrite <- H0.
     rewrite H, tl_b. simpl. reflexivity.
   - destruct IHsub1 as [ann_br [br' tl_br]].
     destruct IHsub2 as [ann_b [b' tl_b]].
     evar (br_ty : ExAst.box_type).
     evar (br_ty' : PIR.ty).
-    simpl. eexists (ExAst.TArr br_ty _, (ann_br, ann_b)), (Let [TermBind (VarDecl (gen_fresh_name x Γ) br_ty') br'] b').
+    simpl. eexists (ExAst.TArr br_ty _, (ann_br, ann_b)), (Let [TermBind (VarDecl (gen_fresh_name x Σ' Γ) br_ty') br'] b').
     assert (translate_ty TT br_ty = Some br_ty'). admit.
-    assert (x' = gen_fresh_name x Γ). admit. rewrite <- H0.
+    assert (x' = gen_fresh_name x Σ' Γ). admit. rewrite <- H0.
     rewrite H, tl_br, tl_b. simpl. reflexivity.
   - destruct IHsub1 as [ann_t1 [t1' tl_t1]].
     destruct IHsub2 as [ann_t2 [t2' tl_t2]].
@@ -198,7 +224,7 @@ Definition subset_term_flags :=
      has_tLambda := true;
      has_tLetIn := true;
      has_tApp := true;
-     has_tConst := false;
+     has_tConst := true;
      has_tConstruct := false;
      has_tCase := false;
      has_tProj := false;
@@ -217,20 +243,51 @@ Definition subset_env_flags :=
 
 Local Existing Instance subset_env_flags.
 
-Lemma wellformed_implies_subset : forall Σ Γ t,
-  @wellformed subset_env_flags Σ (List.length Γ) t ->
-  InSubset Γ t (* all declarations in env_annots *).
+Lemma lookup_constant_env_ex_env : forall Σ kn cb cb',
+  EGlobalEnv.declared_constant (trans_env Σ) kn cb ->
+  lookup_constant_body Σ kn = Some cb'.
 Proof.
-  intros Σ Γ t. revert Γ.
+  intros Σ kn cb cb' Hl.
+  induction Σ.
+  - inversion Hl.
+  - destruct a as [[kn' deps] decl].
+    unfold EGlobalEnv.declared_constant in Hl.
+    rewrite lookup_env_find in Hl. simpl in Hl.
+    destruct (kn == kn') eqn:Heq.
+    + inversion Hl.
+      unfold lookup_constant_body, lookup_constant, lookup_env.
+      simpl. rewrite Heq. simpl.
+Admitted.
+
+(* lookup_env_find *)
+Lemma wf_glob_implies_subset : forall eΣ init cb,
+  @wf_glob subset_env_flags (trans_env eΣ) ->
+  EGlobalEnv.declared_constant (trans_env eΣ) init cb ->
+  ProgramInSubset eΣ init.
+Proof.
+  intros eΣ init cb Hwf Hinit.
+  induction eΣ.
+  - inversion Hinit.
+  - destruct a as [[kn deps] decl].
+    constructor.
+    + admit.
+    + eexists. now eapply lookup_constant_env_ex_env.
+Admitted.
+
+Lemma wellformed_implies_subset : forall eΣ Γ t,
+  @wellformed subset_env_flags (trans_env eΣ) (List.length Γ) t ->
+  InSubset Γ t.
+Proof.
+  intros eΣ Γ t. revert Γ.
   induction t; intros Γ Hwf; inversion Hwf.
   - constructor.
   - apply Nat.ltb_lt, nth_error_Some_value in H0.
     destruct H0. now eapply S_tRel.
-  - pose (na' := gen_fresh_name na Γ).
+  - pose (na' := gen_fresh_name na [] Γ).
     apply (S_tLambda Γ na na'). apply IHt. 
     simpl. apply H0.
   - apply andb_true_iff in H0 as [Hwf_t1 Hwf_t2].
-    pose (na' := gen_fresh_name na Γ).
+    pose (na' := gen_fresh_name na [] Γ).
     apply (S_tLet Γ na na'). 
     apply IHt1; assumption.
     apply IHt2; assumption.
@@ -238,5 +295,8 @@ Proof.
     apply (S_tApp Γ).
     apply IHt1; assumption.
     apply IHt2; assumption.
+  - destruct (EGlobalEnv.lookup_constant (trans_env eΣ) k) eqn:Hl; [|discriminate].
+    destruct eΣ; try discriminate. 
+    eapply S_tConst. admit. admit.
   - destruct prim as [[]]; inversion Hwf.
-Qed.
+Admitted.
