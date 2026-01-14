@@ -66,7 +66,7 @@ Definition translate_ty : box_type -> option PIR.ty :=
   | _ => None
   end.
 
-(* interface so it is easy to add qualified part or change casing later *)
+(* Interface so it is easy to add qualified part or change casing later *)
 Definition gen_fresh_binder_name (kn : kername) (bs : list string) :=
   gen_fresh (kn.2) bs.
 
@@ -155,7 +155,7 @@ Fixpoint translate_env (eΣ : global_env) : env_annots box_type eΣ -> result (l
     end
   end.
 
-Definition bind_pir_env (Σ' : list entry) (body : PIR.term) :=
+Definition bind_pir_env (Σ' : list entry) (body : PIR.term) : PIR.term :=
   Let (map (fun '(_, _, b) => b) (rev Σ')) body.
 
 Definition get_entry_body (e : entry) : PIR.term :=
@@ -234,22 +234,24 @@ Proof.
     now apply nth_error_to_find_index in El. 
   - destruct ann as [[] ann_b]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
-    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; [|discriminate].
-    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Σ' Γ :: Γ)).
+    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; 
+    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na Σ' Γ). 
+    assert (nodup' : NoDup (na' :: Γ)).
     apply NoDup_cons; try assumption.
     apply gen_fresh_name_fresh.
-    specialize (IHt (gen_fresh_name na Σ' Γ :: Γ) b' ann_b nodup' tl_b).
+    specialize (IHt (na' :: Γ) b' ann_b nodup' tl_b).
     apply (translate_type_reflect dom br_ty') in tl_ty.
     now apply tlt_lambda.
   - destruct ann as [[] [ann_br ann_b]]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
     destruct (translate_term Σ' Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
-    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; [|discriminate].
-    inversion Ht as [Ht']. assert (nodup' : NoDup (gen_fresh_name na Σ' Γ :: Γ)).
-    apply NoDup_cons; try assumption.
+    destruct (translate_term Σ' (gen_fresh_name na Σ' Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; 
+    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na Σ' Γ).
+    assert (nodup' : NoDup (na' :: Γ)).
+    apply NoDup_cons; try assumption. 
     apply gen_fresh_name_fresh.
     specialize (IHt1 Γ br' ann_br nodup tl_br).
-    specialize (IHt2 (gen_fresh_name na Σ' Γ :: Γ) b' ann_b nodup' tl_b).
+    specialize (IHt2 (na' :: Γ) b' ann_b nodup' tl_b).
     apply (translate_type_reflect dom br_ty') in tl_ty.
     now apply tlt_let.
   - destruct ann as [ty [ann_t1 ann_t2]].
@@ -270,8 +272,7 @@ End translate.
 Definition translate_unsafe Γ (t : term) (ann : annots box_type t) := 
   with_default (PIR.Error (PIR.UNDEFINED "TranslationFailed")) (translate_term remap_env [] Γ t ann).
 
-(* Lambda Box T is the combination of an EAst term with a dependent tree of its types
-  For now, we pass manual annotations until I set up a proper pipeline *)
+(* Lambda Box T is the combination of an EAst term with a dependent tree of its types *)
 Definition identity_EAst : term :=
   tLambda (nNamed "x") 
     (tRel 0).
@@ -289,12 +290,9 @@ Definition decl_id := (<%% identity_EAst %%>, false, Ex.ConstantDecl c_id).
 Definition c_twice := Build_constant_body ([], ann_twice.1) (Some id_twice).
 Definition decl_twice := (<%% id_twice %%>, false, Ex.ConstantDecl c_twice).
 
-From VTL Require Import BigStepPIR.
+(* Eval cbv in (translate_unsafe [] identity_EAst ann_id). *)
 
-Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))).
-(* Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>).
-Eval vm_compute in match (translate_typed_eprogram remap_env (example, <%% id_twice %%>)) with
+(* Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))). *)
+(* Eval vm_compute in match (translate_typed_eprogram remap_env (example, <%% id_twice %%>)) with
   | Ok t' => eval_and_print_pir t'
   | Err e => e end. *)
-
-(* Eval cbv in (translate_unsafe [] identity_EAst ann_id). *)

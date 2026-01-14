@@ -55,10 +55,19 @@ Definition cic_to_box_typed p :=
   MetaCoq Quote Recursively Definition eid := (fun (x : nat) => x).
   Eval cbv in (erase_type_of_program eid). *)
 
-Definition eid := (fun (x : nat) => x).
+Record Response := {
+  answer : bool;
+  timeInMs : nat;
+}.
+
+Definition allAgreed := forallb answer.
+
+Locate term.
+MetaCoq Quote Recursively Definition t := allAgreed.
+Print t.
 (* MetaCoq Quote Recursively Definition t := eid. *)
-Definition t := <# eid #>.
-Eval cbv in (t.1).
+(* Definition t := <# eid #>. *)
+(* Eval cbv in (t.1). *)
 
 Definition kn_eid : kername := (MPfile ["BoxTest"; "VTL"], "eid").
 Definition Σ_eid := t.1.

@@ -8,9 +8,10 @@ From MetaCoq.ErasurePlugin Require Import Erasure Loader.
 
 From VTL Require Import PIR Utils.
 From VTL Require Import Translation.
+From VTL Require Import Pipeline Pretty.
 
-From Coq.Strings Require Import String.
 Import MCMonadNotation ListNotations.
+From Coq.Strings Require Import String.
 
 Local Existing Instance fake_guard_impl_instance.
 Local Existing Instance extraction_checker_flags.
@@ -18,15 +19,24 @@ Local Existing Instance extraction_checker_flags.
 Definition gal_id := fun x : Z => x.
 
 Import Common.Transform.Transform.
-
-From VTL Require Import Pipeline Pretty.
 Import Tree.
+
+Fixpoint print_box_type (bt : box_type) : String.string :=
+  match bt with
+  | TBox => "□"
+  | TAny => "𝕋"
+  | TArr dom codom => print_box_type dom ++ " → " ++ print_box_type codom
+  | TApp t1 t2 => print_box_type t1 ++ " " ++ print_box_type t2
+  | TVar i => "TVar" ++ bytestring.String.to_string (show i)
+  | TInd d => ind_to_s d.(inductive_mind)
+  | TConst d => bytestring.String.to_string d.2
+  end.
 
 (* Definition print_constant_body_ann *)
 
 (* Definition print_decl_ann '(kn, d) :=
   match d with
-  | ConstantDecl c  => "Definition "  ^ string_of_kername kn (* expand *)
+  | ConstantDecl c  => "Definition " ^ string_of_kername kn (* expand *)
   | InductiveDecl _ => "INDUCTIVE " ^ string_of_kername kn
   | TypeAliasDecl _ => "TYPEALIAS " ^ string_of_kername kn
   end. *)
@@ -63,4 +73,5 @@ Definition show_pipeline (p : Ast.Env.program) :=
   "PIR: " ^ nl ^ (s_to_bs print_as_program p').
 
 Definition test (gal_id gal_id' : Z) := gal_id'.
-Eval vm_compute in show_pipeline <# test #>.
+
+(* Eval vm_compute in show_pipeline <# test #>. *)

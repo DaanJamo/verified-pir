@@ -106,7 +106,7 @@ Proof.
   fix f 2.
   intros k t ann_b.
   destruct t eqn:Et; cbn in *; try exact ann_b.
-  - destruct (_ ?= _).
+  - destruct (k ?= n).
     * exact ann_v.
     * exact ann_b.
     * exact ann_b.
@@ -160,7 +160,7 @@ Qed.
 
 Lemma csubst_correct : forall Σ' Γ x v b ann_v ann_b v' b',
   ~ In x Γ ->
-  translatesTo remap_env Σ' nil v ann_v v' ->
+  translatesTo remap_env Σ' [] v ann_v v' ->
   translatesTo remap_env Σ' (Γ ++ [x]) b ann_b b' ->
   translatesTo remap_env Σ' Γ (csubst v (List.length Γ) b)
   (annot_csubst ann_v (List.length Γ) ann_b)
@@ -219,34 +219,31 @@ Proof.
 Admitted.
 
 Theorem stlc_correct : forall Σ Σ'
-  t (ann_t : annots box_type t) t'
-  v (ann_v : annots box_type v),
+  t (ann_t : annots box_type t) t' v,
   Σ e⊢ t ⇓ v ->
   InSubset [] t ->
-  InSubset [] v ->
   translate_term remap_env Σ' [] t ann_t = Some t' ->
   exists ann_v v' k,
     translatesTo remap_env Σ' [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ Σ' t ann_t t' v ann_v ev sub_t sub_v tlt.
+  intros Σ Σ' t ann_t t' v ev sub_t tlt.
   apply translate_reflect in tlt; try apply NoDup_nil.
+  apply (val_in_sub Σ [] t v ev) in sub_t as sub_v.
   revert t' tlt; induction ev; 
   intros t'' tlt; inversion sub_t.
   - (* □ applied to values, temporary nonsensible case *) admit. 
   - (* apply *)
     inversion tlt. subst.
-    evar (ann_l : annots box_type (tLambda na b)).
-    evar (ann_a : annots box_type a').
     eapply val_in_sub in ev1 as sub_lambda; eauto.
     eapply val_in_sub in ev2 as sub_arg; eauto.
-    destruct (IHev1 ann_t1 ann_l H1 sub_lambda t1' H5) as [ann_v1 [v1' [k1 [tlt_l ev_l]]]].
-    destruct (IHev2 ann_t2 ann_a H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
+    destruct (IHev1 ann_t1 H1 sub_lambda t1' H5) as [ann_v1 [v1' [k1 [tlt_l ev_l]]]].
+    destruct (IHev2 ann_t2 H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
     inversion tlt_l. subst.
     assert (tlt_sb : translatesTo remap_env Σ' [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
     { eapply csubst_correct; auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
-    specialize (IHev3 (annot_csubst ann_v2 0 ann_b) ann_v sub_sb sub_v (subst x' v2' b') tlt_sb).
+    specialize (IHev3 (annot_csubst ann_v2 0 ann_b) sub_sb sub_v (subst x' v2' b') tlt_sb).
     destruct IHev3 as [ann_v' [v' [k3 [tlt_v ev_v]]]].
     exists ann_v'. exists v'. eexists. split.
     + apply tlt_v.
@@ -257,13 +254,12 @@ Proof with (eauto using eval).
       * apply ev_v.
   - (* let *)
     inversion tlt. apply inj_pair2 in H8. subst.
-    evar (ann_brv : annots box_type b0').
     eapply val_in_sub in ev1 as sub_br; eauto.
-    destruct (IHev1 ann_br ann_brv H1 sub_br br' H10) as [ann_v1 [v1' [k1 [tlt_br ev_br]]]].
+    destruct (IHev1 ann_br H1 sub_br br' H10) as [ann_v1 [v1' [k1 [tlt_br ev_br]]]].
     assert (tlt_sb : translatesTo remap_env Σ' [] (csubst b0' 0 b1) (annot_csubst ann_v1 0 ann_b) (BigStepPIR.subst x'0 v1' b')).
     { eapply csubst_correct; auto. }
     apply tlt_in_sub in tlt_sb as sub_sb.
-    specialize (IHev2 (annot_csubst ann_v1 0 ann_b) ann_v sub_sb sub_v (subst x'0 v1' b') tlt_sb).
+    specialize (IHev2 (annot_csubst ann_v1 0 ann_b) sub_sb sub_v (subst x'0 v1' b') tlt_sb).
     destruct IHev2 as [ann_v' [v' [k2 [tlt_v ev_v]]]].
     exists ann_v'. exists v'. eexists. split.
     + apply tlt_v.
@@ -297,7 +293,8 @@ Proof with (eauto using eval).
     + inversion ev1. subst. inversion i.
     + rewrite List.nth_error_nil in H0. discriminate H0.
     + inversion ev1. subst. inversion i.
-    + subst. admit.
+    + subst. (* Apply LetIn to value *) admit.
+    + subst. (* Apply Apply to value *) admit.
 (*  (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 

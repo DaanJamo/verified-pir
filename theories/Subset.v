@@ -14,7 +14,7 @@ From Coq Require Import Strings.String Lia.
 Inductive InSubset (Γ : list string) : EAst.term -> Prop :=
   | S_tBox : InSubset Γ tBox
   | S_tRel : forall n res,
-    nth_error Γ n = Some res -> (* should this be find_index?*)
+    nth_error Γ n = Some res ->
     InSubset Γ (tRel n)
   | S_tLambda : forall x x' b,
     InSubset (x' :: Γ) b ->
@@ -111,9 +111,9 @@ Proof.
       apply nth_error_Some_value in H0. destruct H0.
       apply (S_tRel (Γ1 ++ Γ2) (Nat.pred n) x0 H). assumption.
     + apply Nat.compare_gt_iff in Ec.
-      apply nth_error_Some_length, length_middle in H0.
-      apply nth_error_Some_value in H0. destruct H0.
-      apply (S_tRel (Γ1 ++ Γ2) n x0 H). assumption.
+      apply length_extend with (l2 := Γ2) in Ec.
+      apply nth_error_Some_value in Ec. destruct Ec.
+      apply (S_tRel (Γ1 ++ Γ2) n x0 H).
   - simpl. econstructor.
     apply (IHb (x' :: Γ1) x). apply H0.
   - simpl. econstructor.

@@ -83,9 +83,8 @@ Proof.
   lia.
 Qed.
 
-Lemma length_middle : forall {A} (l1 l2 : list A) x n,
+Lemma length_extend : forall {A} (l1 l2 : list A) n,
   n < length l1 ->
-  n < length (l1 ++ x :: l2) ->
   n < length (l1 ++ l2).
 Proof.
   intros. destruct l1.
@@ -591,15 +590,4 @@ Definition ind_to_s (ind_kn : kername) : string :=
   | (MPfile ["Datatypes"%bs; "Init"%bs; "Coq"%bs], "unit"%bs) => "unit"
   | (MPfile ["Datatypes"%bs; "Init"%bs; "Coq"%bs], "bool"%bs) => "bool"
   | _ => kn_to_s ind_kn
-  end.
-
-Fixpoint print_box_type (bt : box_type) : string :=
-  match bt with
-  | TBox => "□"
-  | TAny => "𝕋"
-  | TArr dom codom => print_box_type dom ++ " → " ++ print_box_type codom
-  | TApp t1 t2 => print_box_type t1 ++ " " ++ print_box_type t2
-  | TVar i => "TVar" ++ bytestring.String.to_string (show i)
-  | TInd d => ind_to_s d.(inductive_mind)
-  | TConst d => bytestring.String.to_string d.2
   end.
