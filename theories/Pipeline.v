@@ -203,4 +203,6 @@ Definition compile_pir (p : Ast.Env.program) : PIR.term :=
 Definition compile_and_print_pir (p : Ast.Env.program) :=
   Pretty.print_as_program (compile_pir p).
 
+Locate inductive.
+Eval vm_compute in <# fun b : bool => b #>.
 (* Eval vm_compute in compile_and_print_pir <# gal_id #>. *)

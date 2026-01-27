@@ -14,6 +14,11 @@ From Coq Require Import List.
 Import MCMonadNotation.
 Import ListNotations.
 
+Locate "<%% %%>".
+Locate inductive.
+Print PCUICAst.tInd.
+Eval vm_compute in <% fun b : bool => b %>.
+
 Program Definition cic_to_box p :=
   run_erase_program default_erasure_config ([], p) _.
 Next Obligation.

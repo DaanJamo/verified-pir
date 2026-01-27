@@ -128,7 +128,7 @@ Proof.
   destruct (translate_ty ty) as [ty'|]; [|exact None].
   destruct (translate_term Σ' [] t ann_c) as [t'|]; [|exact None].
   pose (kn' := gen_fresh_binder_name kn (map (fun '(_, nm, _) => nm) Σ')).
-  exact (Some (kn, kn', TermBind (VarDecl kn' ty' ) t')).
+  exact (Some (kn, kn', TermBind (VarDecl kn' ty') t')).
 Defined.
 
 Local Open Scope string_scope.
@@ -292,7 +292,9 @@ Definition decl_twice := (<%% id_twice %%>, false, Ex.ConstantDecl c_twice).
 
 (* Eval cbv in (translate_unsafe [] identity_EAst ann_id). *)
 
-(* Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))). *)
-(* Eval vm_compute in match (translate_typed_eprogram remap_env (example, <%% id_twice %%>)) with
-  | Ok t' => eval_and_print_pir t'
-  | Err e => e end. *)
+Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))).
+Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>).
+
+(* Eval cbv in {| inductive_mind := <%% bool %%>; inductive_ind := 0|}.
+Eval vm_compute in <%% bool %%>. *)
+

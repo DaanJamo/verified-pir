@@ -218,6 +218,32 @@ Proof.
   - simpl. (* shadowed or in Σ' *) admit.
 Admitted.
 
+Theorem program_correct : forall Σ Σ' init
+  t (ann_t : annots box_type t) t' v,
+  ProgramInSubset Σ init ->
+  lookup_constant_body Σ init = Some t ->
+  (trans_env Σ) e⊢ t ⇓ v ->
+  translate_term remap_env Σ' [] t ann_t = Some t' ->
+  exists ann_v v' k,
+    translatesTo remap_env Σ' [] v ann_v v' /\
+    eval t' v' k.
+Proof.
+  intros.
+  induction H1.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - evar (ann_b : annots box_type body).
+Admitted.
+
 Theorem stlc_correct : forall Σ Σ'
   t (ann_t : annots box_type t) t' v,
   Σ e⊢ t ⇓ v ->
@@ -281,8 +307,12 @@ Proof with (eauto using eval).
     eapply val_in_sub in ev1 as sub_fix; eauto.
     inversion sub_fix.
   - (* const *)
+
     (* evar (ann_b : annots box_type body).
-    specialize (IHev ann_b ann_v). unfold EGlobalEnv.declared_constant in isdecl. *)
+    assert (InSubset [] body).
+    { admit. }
+    specialize (IHev ann_b H2 sub_v t''). *)
+    
     admit.
   - (* mkApps constr *)
     eapply val_in_sub in ev1 as sub_apps; eauto.
@@ -306,3 +336,6 @@ Proof with (eauto using eval).
     + apply tlt. 
     + apply E_LamAbs. eauto. *)
 Admitted.
+
+Print env_annots.
+Print global_decl_annots.
