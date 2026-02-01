@@ -1,4 +1,4 @@
-From MetaCoq.Erasure.Typed Require Import ExAst Utils WcbvEvalAux.
+From MetaCoq.Erasure.Typed Require Import ExAst Utils ResultMonad WcbvEvalAux.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
 From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure Require Import EAst ECSubst ELiftSubst EWellformed.
@@ -158,8 +158,22 @@ Proof.
   - now eapply tlt_const.
 Qed.
 
+Lemma lookup_Some : forall Σ' kn kn' br, 
+  lookup_entry Σ' kn = Some (kn, kn', br) ->
+  In kn' (get_binder_names Σ').
+Proof.
+  intros. induction Σ'.
+  - discriminate.
+  - destruct a as [[bd_kn bd_kn'] bd]. 
+    simpl. simpl in H. 
+    destruct (bd_kn == kn) eqn:Heq; inversion H.
+    + now left.
+    + apply IHΣ' in H1. now right.
+Qed.
+
 Lemma csubst_correct : forall Σ' Γ x v b ann_v ann_b v' b',
   ~ In x Γ ->
+  ~ In x (get_binder_names Σ') ->
   translatesTo remap_env Σ' [] v ann_v v' ->
   translatesTo remap_env Σ' (Γ ++ [x]) b ann_b b' ->
   translatesTo remap_env Σ' Γ (csubst v (List.length Γ) b)
@@ -167,7 +181,7 @@ Lemma csubst_correct : forall Σ' Γ x v b ann_v ann_b v' b',
   (BigStepPIR.subst x v' b').
 Proof.
   intros Σ' Γ x v b. revert Γ. induction b;
-  intros Γ ann_v ann_b v' b' HnIn tlt_v tlt_b;
+  intros Γ ann_v ann_b v' b' HnIn HnIn' tlt_v tlt_b;
   inversion tlt_b; subst.
   - constructor.
   - destruct_str_eq x x0; subst.
@@ -212,48 +226,94 @@ Proof.
       * simpl. assert (~ In x (x' :: Γ)) by now apply not_in_cons.
         apply IHb2; assumption.
   - apply inj_pair2 in H2. subst.
-    specialize (IHb1 Γ ann_v ann_t1 v' t1' HnIn tlt_v H1).
-    specialize (IHb2 Γ ann_v ann_t2 v' t2' HnIn tlt_v H4).
+    specialize (IHb1 Γ ann_v ann_t1 v' t1' HnIn HnIn' tlt_v H1).
+    specialize (IHb2 Γ ann_v ann_t2 v' t2' HnIn HnIn' tlt_v H4).
     now apply tlt_app.
-  - simpl. (* shadowed or in Σ' *) admit.
-Admitted.
+  - simpl.
+    destruct_str_eq x kn'.
+    + apply lookup_Some in H1 as HIn'. subst. contradiction.
+    + econstructor. eauto.
+Qed.
 
-Theorem program_correct : forall Σ Σ' init
-  t (ann_t : annots box_type t) t' v,
-  ProgramInSubset Σ init ->
-  lookup_constant_body Σ init = Some t ->
-  (trans_env Σ) e⊢ t ⇓ v ->
-  translate_term remap_env Σ' [] t ann_t = Some t' ->
-  exists ann_v v' k,
-    translatesTo remap_env Σ' [] v ann_v v' /\
-    eval t' v' k.
+Lemma lookup_entry_Some : forall eΣ ann_env kn Σ' cb,
+  translate_env remap_env eΣ ann_env = Ok Σ' ->
+  lookup_constant_body eΣ kn = Some cb ->
+  exists cb', lookup_entry Σ' kn = Some cb'.
 Proof.
-  intros.
-  induction H1.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - evar (ann_b : annots box_type body).
+  intros. induction eΣ.
+  - inversion H0.
+  - destruct a as [[kn' deps] decl].
+    destruct (Kernames.eq_kername kn kn') eqn:Heq.
+    + apply ReflectEq.eqb_eq in Heq as Heq'; subst.
+      unfold lookup_constant_body, lookup_constant, lookup_env in H0.
+      cbn in H0. rewrite ReflectEq.eqb_refl in H0. simpl in H0.
+      destruct decl; try discriminate.
+      inversion H0. inversion H.
 Admitted.
 
-Theorem stlc_correct : forall Σ Σ'
+Lemma let_binding_eval_correct : forall Σ' init init' vdecl t' v' k,
+  lookup_entry Σ' init = Some (init, init', TermBind vdecl t') ->
+  eval t' v' k ->
+  eval (bind_pir_env Σ' (Var init')) v' k.
+Proof.
+  intros Σ' init init' vdecl t' v' k Hlookup Heval.
+  induction Σ' as [| [[kn kn'] binder] Σ' IH].
+  - inversion Hlookup.
+  - simpl in Hlookup.
+    destruct (kn == init) eqn:Heq.
+    + inversion Hlookup. subst.
+Admitted.
+
+Lemma let_binding_correct : forall Σ ann_env Σ' init init'
+  t ann_t t' ann vdecl,
+  translate_env remap_env Σ ann_env = Ok Σ' ->
+  lookup_entry Σ' init = Some (init, init', TermBind vdecl t') ->
+  translate_term remap_env [] [] t ann = Some (bind_pir_env Σ' (Var init')) ->
+  translate_term remap_env Σ' [] (tConst init) ann_t = Some t'.
+Proof.
+  intros Σ ann_env Σ' init init' t ann_t t' ann vdecl.
+  revert Σ'; induction Σ; intros Σ' tl_env Hl tl_let.
+  - inversion tl_env. subst. 
+    inversion Hl.
+  - destruct a as [[kn deps] decl]. destruct ann_env as [ann_decl ann_env'].
+    cbn in tl_env.
+    destruct (translate_env remap_env Σ ann_env') eqn:Eenv; try discriminate.
+    destruct decl; try discriminate.
+    + destruct (translate_constant remap_env t0 c kn ann_decl) eqn:Edecl; try discriminate.
+      inversion tl_env. subst. specialize (IHΣ ann_env' t0 Eenv). 
+      destruct e as [[]]. unfold bind_pir_env in tl_let. cbn in tl_let.
+      inversion tl_let. admit.
+    + admit.
+      (* destruct (find (fun nm => Kernames.eq_kername kn nm) pir_ignore_default) eqn:Edefault. *)
+      (* destruct (kn == (Kernames.MPfile ["BinNums"; "Numbers"; "Coq"], "positive")) eqn:Etest.
+      * setoid_rewrite Etest in tl_env.
+        inversion tl_env. subst. 
+        now eapply IHΣ.
+      * setoid_rewrite Etest in tl_env.
+        destruct (kn == (Kernames.MPfile ["BinNums"; "Numbers"; "Coq"], "Z")) eqn:Etest2.
+        ** setoid_rewrite Etest2 in tl_env. *)
+    + admit.
+Admitted.
+
+Theorem stlc_correct : forall (Σ : global_env) Σ'
   t (ann_t : annots box_type t) t' v,
-  Σ e⊢ t ⇓ v ->
-  InSubset [] t ->
+  (trans_env Σ) e⊢ t ⇓ v ->
+  InSubset Σ [] t ->
+  (* translation for entries succeeds *)
+  (forall kn decl cb ann_cb kn' vdecl cb', 
+    EGlobalEnv.declared_constant (trans_env Σ) kn decl ->
+    decl.(cst_body) = Some cb ->
+    lookup_entry Σ' kn = Some (kn, kn', TermBind vdecl cb') ->
+    translatesTo remap_env Σ' [] cb ann_cb cb') ->
+  (* declared entries have been substituted *)
+  (forall kn kn' vdecl cb', lookup_entry Σ' kn = Some (kn, kn', TermBind vdecl cb') -> 
+    Var kn' = subst kn' cb' (Var kn')) ->
   translate_term remap_env Σ' [] t ann_t = Some t' ->
   exists ann_v v' k,
     translatesTo remap_env Σ' [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ Σ' t ann_t t' v ev sub_t tlt.
+  intros Σ Σ' t ann_t t' v ev sub_t tlt_decl Hdecl_subst tlt.
   apply translate_reflect in tlt; try apply NoDup_nil.
   apply (val_in_sub Σ [] t v ev) in sub_t as sub_v.
   revert t' tlt; induction ev; 
@@ -267,8 +327,8 @@ Proof with (eauto using eval).
     destruct (IHev2 ann_t2 H2 sub_arg t2' H8) as [ann_v2 [v2' [k2 [tlt_v2 ev_v2]]]].
     inversion tlt_l. subst.
     assert (tlt_sb : translatesTo remap_env Σ' [] (csubst a' 0 b) (annot_csubst ann_v2 0 ann_b) (BigStepPIR.subst x' v2' b')).
-    { eapply csubst_correct; auto. }
-    apply tlt_in_sub in tlt_sb as sub_sb.
+    { eapply csubst_correct; auto. admit. }
+    eapply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev3 (annot_csubst ann_v2 0 ann_b) sub_sb sub_v (subst x' v2' b') tlt_sb).
     destruct IHev3 as [ann_v' [v' [k3 [tlt_v ev_v]]]].
     exists ann_v'. exists v'. eexists. split.
@@ -283,8 +343,8 @@ Proof with (eauto using eval).
     eapply val_in_sub in ev1 as sub_br; eauto.
     destruct (IHev1 ann_br H1 sub_br br' H10) as [ann_v1 [v1' [k1 [tlt_br ev_br]]]].
     assert (tlt_sb : translatesTo remap_env Σ' [] (csubst b0' 0 b1) (annot_csubst ann_v1 0 ann_b) (BigStepPIR.subst x'0 v1' b')).
-    { eapply csubst_correct; auto. }
-    apply tlt_in_sub in tlt_sb as sub_sb.
+    { eapply csubst_correct; auto. admit. }
+    eapply tlt_in_sub in tlt_sb as sub_sb.
     specialize (IHev2 (annot_csubst ann_v1 0 ann_b) sub_sb sub_v (subst x'0 v1' b') tlt_sb).
     destruct IHev2 as [ann_v' [v' [k2 [tlt_v ev_v]]]].
     exists ann_v'. exists v'. eexists. split.
@@ -307,13 +367,15 @@ Proof with (eauto using eval).
     eapply val_in_sub in ev1 as sub_fix; eauto.
     inversion sub_fix.
   - (* const *)
-
-    (* evar (ann_b : annots box_type body).
-    assert (InSubset [] body).
-    { admit. }
-    specialize (IHev ann_b H2 sub_v t''). *)
-    
-    admit.
+    evar (ann_b : annots box_type body).
+    subst. inversion tlt. subst. destruct br.
+    apply Hdecl_subst in H4 as Hrw. simpl in Hrw. rewrite eqb_refl in Hrw. subst.
+    apply (IHev ann_b).
+    + admit.
+    + assumption.
+    + eapply tlt_decl; eauto.
+      assert (decl = decl0). { admit. (* prove freshness *)}
+      subst. assumption.
   - (* mkApps constr *)
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_constr _].
@@ -323,9 +385,11 @@ Proof with (eauto using eval).
     + inversion ev1. subst. inversion i.
     + rewrite List.nth_error_nil in H0. discriminate H0.
     + inversion ev1. subst. inversion i.
-    + subst. (* Apply LetIn to value *) admit.
+    + subst. (* Apply LetIn to value *) inversion tlt. 
+      inversion H4. admit.
     + subst. (* Apply Apply to value *) admit.
-(*  (* Atoms *)
+    + (* Apply Const to value*) admit.
+ (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 
     + apply tlt_tt. 
@@ -334,8 +398,5 @@ Proof with (eauto using eval).
   - (* lambda *) subst. exists ann_t. exists t''. inversion tlt. 
     subst. eexists. split. 
     + apply tlt. 
-    + apply E_LamAbs. eauto. *)
+    + apply E_LamAbs. eauto.
 Admitted.
-
-Print env_annots.
-Print global_decl_annots.

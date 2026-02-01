@@ -123,11 +123,7 @@ Definition translatable_program (p : Ast.Env.program) : Prop :=
   exists epT, translate_program p = epT.
 
 Definition translatable_typed_eprogram (epT : typed_eprogram) : Prop :=
-  let '((eΣ; ann_env), kn) := epT in
-  match lookup_constant_body eΣ kn with
-  | Some t => InSubset [] t
-  | None => False
-  end.
+  let '((eΣ; ann_env), init) := epT in ProgramInSubset eΣ init.
 
 Definition pir_fuel := 5000.
 Definition pir_program := (unit * term).
@@ -174,12 +170,13 @@ Program Definition lbt_to_pir_transform :
      preservation _ _ _ _ := _
   |}.
 Next Obligation.
-  (* unfold eval_pir_program.
+  unfold eval_pir_program.
   unfold translatable_typed_eprogram in *.
   destruct p as [[eΣ ann_env] kn].
   destruct e.
   destruct (lookup_constant_body eΣ kn) eqn:Hlookup; try discriminate.
-  apply (subset_is_translatable remap_env) in t1 as Htl.
+  simpl in H. destruct t1 as [Hall_sub [cb Hdecl]].
+  (* apply (subset_is_translatable remap_env) in t1 as Htl.
   destruct Htl as [ann_t [t' tl]]. simpl in H.
   evar (ann_v : annots box_type t0).
   apply (val_in_sub (trans_env eΣ) []) in H as sub_v.
@@ -203,6 +200,30 @@ Definition compile_pir (p : Ast.Env.program) : PIR.term :=
 Definition compile_and_print_pir (p : Ast.Env.program) :=
   Pretty.print_as_program (compile_pir p).
 
-Locate inductive.
-Eval vm_compute in <# fun b : bool => b #>.
-(* Eval vm_compute in compile_and_print_pir <# gal_id #>. *)
+(* Eval vm_compute in <# fun b : bool => b #>.
+Eval vm_compute in compile_and_print_pir <# gal_id #>. *)
+
+Section Test.
+
+Variable (Σ  : Env.global_env).
+Variable (t  : Ast.term).
+
+Variable (eΣ  : ExAst.global_env).
+Variable (et : EAst.term).
+
+Variable (t' : PIR.term).
+
+Variable (sub : InSubset eΣ [] et).
+
+Lemma precond : pre gallina_to_lbt_transform (Σ, t).
+Proof.
+  hnf. easy.
+Qed.
+
+Definition test := sub.
+
+End Test.
+
+(* Require Import MetaCoq.ErasurePlugin.ErasureCorrectness.
+
+Check @verified_erasure_pipeline_theorem. *)

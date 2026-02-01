@@ -170,7 +170,7 @@ Definition translate_typed_eprogram (epT : typed_eprogram) : result PIR.term str
   match translate_env eΣ ann_env with
   | Ok Σ' =>
     match lookup_entry Σ' init with
-    | Some entry => Ok (bind_pir_env Σ' (get_entry_body entry))
+    | Some (_, init', _) => Ok (bind_pir_env Σ' (Var init'))
     | None => Err ("Initial definition " ++ kn_to_s init ++ " not found in environment.") end
   | Err e => Err ("Failed to translate environment: " ++ e) end.
 
@@ -293,7 +293,7 @@ Definition decl_twice := (<%% id_twice %%>, false, Ex.ConstantDecl c_twice).
 (* Eval cbv in (translate_unsafe [] identity_EAst ann_id). *)
 
 Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))).
-Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>).
+(* Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>). *)
 
 (* Eval cbv in {| inductive_mind := <%% bool %%>; inductive_ind := 0|}.
 Eval vm_compute in <%% bool %%>. *)

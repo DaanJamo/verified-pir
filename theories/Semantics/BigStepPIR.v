@@ -174,7 +174,18 @@ Definition eval_pir_unsafe (t : term) :=
 Definition eval_and_print_pir (t : term) := 
   print_as_program (eval_pir_unsafe t).
 
-(* Eval vm_compute in eval_pir (Let [(TermBind (VarDecl "gal_id" <{ℤ}>) <{λ "x" :: ℤ, {Var "x"} }>)] (<{ {Var "gal_id"} ⋅ true }>)). *)
+(* Eval vm_compute in eval_and_print_pir 
+  (Let
+    [TermBind
+      (VarDecl "id"%string
+        (Ty_Fun (Ty_Builtin DefaultUniInteger) (Ty_Builtin DefaultUniInteger)))
+        (LamAbs "x"%string (Ty_Builtin DefaultUniInteger) (Var "x"%string));
+     TermBind
+      (VarDecl "id_twice"%string
+        (Ty_Fun (Ty_Builtin DefaultUniInteger) (Ty_Builtin DefaultUniInteger)))
+        (LamAbs "y"%string (Ty_Builtin DefaultUniInteger)
+          (Apply (Var "id"%string) (Var "y"%string)))]
+  (Apply (Var "id_twice"%string) (Var "id_twice"%string))). *)
 
 Lemma eval_subst : forall x v2 t v fuel,
   evaluate <{ [x := v2] t}> fuel = Some v ->
