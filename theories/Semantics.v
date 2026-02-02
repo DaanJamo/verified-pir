@@ -400,3 +400,34 @@ Proof with (eauto using eval).
     + apply tlt. 
     + apply E_LamAbs. eauto.
 Admitted.
+
+Theorem stlc_no_globals : forall
+  t (ann_t : annots box_type t) t' v,
+  [] e⊢ t ⇓ v ->
+  InSubset [] [] t ->
+  translate_term remap_env [] [] t ann_t = Some t' ->
+  exists ann_v v' k,
+    translatesTo remap_env [] [] v ann_v v' /\
+    eval t' v' k.
+Proof with (eauto using eval).
+  intros t ann_t t' v ev sub_t tlt.
+  eapply (stlc_correct [] [] t);
+  try discriminate; eauto.
+Qed.
+
+Theorem stlc_one_global : forall
+  gdecl cb ann_cb (entry : entry) t ann_t t' v,
+  (trans_env [gdecl]) e⊢ t ⇓ v ->
+  InSubset [gdecl] [] t ->
+  lookup_constant_body [gdecl] gdecl.1.1 = Some cb ->
+  translate_term remap_env [entry] [] cb ann_cb = Some (get_entry_body entry) ->
+  translate_term remap_env [entry] [] t ann_t = Some t' ->
+  exists ann_v v' k,
+    translatesTo remap_env [entry] [] v ann_v v' /\
+    eval t' v' k.
+Proof with (eauto using eval).
+  intros gdecl cb ann_cb entry t ann_t t' v ev sub_t Hl tl_cb tlt.
+  eapply (stlc_correct [gdecl] [entry] t);
+  try discriminate; eauto.
+  * intros. admit.
+Admitted.

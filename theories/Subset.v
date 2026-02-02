@@ -27,10 +27,10 @@ Inductive InSubset (eΣ : global_env) (Γ : list string) : EAst.term -> Prop :=
     InSubset eΣ Γ f ->
     InSubset eΣ Γ a ->
     InSubset eΣ Γ (tApp f a)
-  | S_tConst : forall eΣ' kn decl cb,
+  | S_tConst : forall kn decl cb,
     declared_constant (trans_env eΣ) kn decl ->
     decl.(EAst.cst_body) = Some cb ->
-    InSubset eΣ' [] cb ->
+    InSubset eΣ [] cb ->
     InSubset eΣ Γ (tConst kn)
 .
 
