@@ -576,6 +576,24 @@ From MetaCoq.Common Require Import Kernames.
 Definition kn_to_s (kn : kername) : string :=
   bytestring.String.to_string (string_of_kername kn).
 
+From MetaCoq.Erasure Require Import EAst EGlobalEnv.
+
+Lemma declared_constant_same : forall eΣ kn decl b decl' b',
+  declared_constant eΣ kn decl ->
+  decl.(cst_body) = Some b ->
+  declared_constant eΣ kn decl' ->
+  decl'.(cst_body) = Some b' ->
+  decl = decl' /\ b = b'.
+Proof.
+  intros. induction eΣ.
+  - discriminate. 
+  - destruct a as [kn' decl''].
+    unfold declared_constant in *. simpl in H, H1.
+    destruct (kn == kn').
+    + now rewrite H in H1.
+    + auto.
+Qed.
+
 From MetaCoq.Erasure.Typed Require Import ExAst ResultMonad Utils.
 
 Definition res_to_opt {T E : Type} (res : result T E) : option T :=

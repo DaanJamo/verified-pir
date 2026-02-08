@@ -35,6 +35,8 @@ Definition pir_ignore_default : list kername :=
    <%% unit %%>;
    <%% bool %%>].
 
+Opaque pir_ignore_default.
+
 Section translate.
 
 Context (TT : env PIR.ty).
@@ -145,11 +147,12 @@ Fixpoint translate_env (eΣ : global_env) : env_annots box_type eΣ -> result (l
         | Some entry => Ok (entry :: Σ')
         | None => Err ("Failed to translate constant " ++ kn_to_s kn)
         end
-      | _, _ => (* we ignore certain inductives until the remapping of inductives has been implemented *)
+      | InductiveDecl _, _ => (* we ignore certain inductives until the remapping of inductives has been implemented *)
         match find (fun nm => eq_kername kn nm) pir_ignore_default with
         | Some res => Ok Σ'
         | None => Err ("Inductive " ++ kn_to_s kn ++ " not found in translation table, 
-                       true inductives or type aliases are not supported yet") end
+                       true inductives are not supported yet") end
+      | _, _ => Err ("Type aliases are not supported yet")
       end
     | Err e => Err e
     end
@@ -206,6 +209,38 @@ Inductive translatesTo (Σ' : list entry) (Γ : list string) : forall (t : term)
   | tlt_const : forall kn kn' br ann,
       lookup_entry Σ' kn = Some (kn, kn', br) ->
       translatesTo Σ' Γ (tConst kn) ann (Var kn').
+
+Definition translatesConstant (Σ' : list entry) 
+           (cb : constant_body) (ann_cb : constant_body_annots box_type cb)
+           (cb' : entry) : Prop.
+Proof.
+  destruct cb as [args cst_body].
+  destruct cb' as [[e_kn e_kn'] [v t']].
+  - destruct cst_body.
+    + exact (translatesTo Σ' [] t ann_cb t').
+    + exact False.
+Defined.
+
+Definition translatesDecl (Σ' : list entry) 
+           (decl : global_decl) (ann_decl : global_decl_annots box_type decl)
+           (entry : entry) : Prop.
+Proof.
+  destruct decl.
+  - simpl in ann_decl.
+    exact (translatesConstant Σ' c ann_decl entry).
+  - exact False.
+  - exact False.
+Defined.
+
+Inductive translatesEnv : forall (Σ : global_env) (Σ' : list entry), env_annots box_type Σ -> Prop :=
+  | tlte_empty : forall ann_env, translatesEnv [] [] ann_env
+  | tlte_const : forall Σ Σ' kn deps decl ann_decl entry (ann_env : env_annots box_type Σ),
+      translatesDecl Σ' decl ann_decl entry ->
+      translatesEnv (((kn, deps), decl) :: Σ) (entry :: Σ') (ann_decl, ann_env)
+  | tlte_remap : forall Σ Σ' kn deps ind ann_ind ann_env,
+      find (fun nm : kername => kn == nm) pir_ignore_default = Some kn ->
+      translatesEnv Σ Σ' ann_env ->
+      translatesEnv (((kn, deps), InductiveDecl ind) :: Σ) Σ' (ann_ind, ann_env).
 
 Theorem translate_type_reflect : forall ty ty',
   translate_ty ty = Some ty' -> translatesTypeTo ty ty'.
@@ -267,6 +302,37 @@ Proof.
     now eapply tlt_const.
 Qed.
 
+Theorem translate_env_reflect : forall Σ Σ' ann_env,
+  translate_env Σ ann_env = Ok Σ' -> translatesEnv Σ Σ' ann_env.
+Proof.
+  intros Σ Σ' ann_env tl_env.
+  induction Σ.
+  - inversion tl_env. 
+    apply tlte_empty.
+  - destruct ann_env as [ann_decl ann_env'].
+    destruct a as [[kn deps] decl].
+    simpl in tl_env.
+    destruct (translate_env Σ ann_env') as [Σ''|err] eqn:tl_env'; try discriminate.
+    destruct decl.
+    + destruct (translate_constant Σ'' c kn ann_decl) eqn:tl_constant; try discriminate.
+      inversion tl_env. subst.
+      econstructor. simpl. 
+      destruct c as [[nm ty] [t|]]; try discriminate.
+      { simpl in tl_constant.
+        destruct (translate_ty ty) eqn:tl_ty; try discriminate.
+        destruct (translate_term Σ'' [] t ann_decl) eqn:tl_t; try discriminate.
+        apply translate_reflect in tl_t; [|apply NoDup_nil].
+        destruct e as [[e_kn e_kn'] [v t']]. simpl.
+        inversion tl_constant. subst t1.
+        assumption. }
+    + destruct (find (fun nm : kername => kn == nm) pir_ignore_default) eqn:Hremap; try discriminate.
+      inversion tl_env. subst.
+      apply find_some in Hremap as Heq. 
+      destruct Heq as [_ Heq]. apply ReflectEq.eqb_eq in Heq. subst.
+      constructor; auto.
+    + discriminate.
+Qed.
+
 End translate.
 
 Definition translate_unsafe Γ (t : term) (ann : annots box_type t) := 
@@ -294,7 +360,3 @@ Definition decl_twice := (<%% id_twice %%>, false, Ex.ConstantDecl c_twice).
 
 Definition example : (∑ env, env_annots box_type env) := ([decl_twice; decl_id]; (ann_twice, (ann_id, tt))).
 (* Eval vm_compute in translate_typed_eprogram remap_env (example, <%% id_twice %%>). *)
-
-(* Eval cbv in {| inductive_mind := <%% bool %%>; inductive_ind := 0|}.
-Eval vm_compute in <%% bool %%>. *)
-

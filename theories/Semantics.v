@@ -235,85 +235,22 @@ Proof.
     + econstructor. eauto.
 Qed.
 
-Lemma lookup_entry_Some : forall eΣ ann_env kn Σ' cb,
-  translate_env remap_env eΣ ann_env = Ok Σ' ->
-  lookup_constant_body eΣ kn = Some cb ->
-  exists cb', lookup_entry Σ' kn = Some cb'.
-Proof.
-  intros. induction eΣ.
-  - inversion H0.
-  - destruct a as [[kn' deps] decl].
-    destruct (Kernames.eq_kername kn kn') eqn:Heq.
-    + apply ReflectEq.eqb_eq in Heq as Heq'; subst.
-      unfold lookup_constant_body, lookup_constant, lookup_env in H0.
-      cbn in H0. rewrite ReflectEq.eqb_refl in H0. simpl in H0.
-      destruct decl; try discriminate.
-      inversion H0. inversion H.
-Admitted.
-
-Lemma let_binding_eval_correct : forall Σ' init init' vdecl t' v' k,
-  lookup_entry Σ' init = Some (init, init', TermBind vdecl t') ->
-  eval t' v' k ->
-  eval (bind_pir_env Σ' (Var init')) v' k.
-Proof.
-  intros Σ' init init' vdecl t' v' k Hlookup Heval.
-  induction Σ' as [| [[kn kn'] binder] Σ' IH].
-  - inversion Hlookup.
-  - simpl in Hlookup.
-    destruct (kn == init) eqn:Heq.
-    + inversion Hlookup. subst.
-Admitted.
-
-Lemma let_binding_correct : forall Σ ann_env Σ' init init'
-  t ann_t t' ann vdecl,
-  translate_env remap_env Σ ann_env = Ok Σ' ->
-  lookup_entry Σ' init = Some (init, init', TermBind vdecl t') ->
-  translate_term remap_env [] [] t ann = Some (bind_pir_env Σ' (Var init')) ->
-  translate_term remap_env Σ' [] (tConst init) ann_t = Some t'.
-Proof.
-  intros Σ ann_env Σ' init init' t ann_t t' ann vdecl.
-  revert Σ'; induction Σ; intros Σ' tl_env Hl tl_let.
-  - inversion tl_env. subst. 
-    inversion Hl.
-  - destruct a as [[kn deps] decl]. destruct ann_env as [ann_decl ann_env'].
-    cbn in tl_env.
-    destruct (translate_env remap_env Σ ann_env') eqn:Eenv; try discriminate.
-    destruct decl; try discriminate.
-    + destruct (translate_constant remap_env t0 c kn ann_decl) eqn:Edecl; try discriminate.
-      inversion tl_env. subst. specialize (IHΣ ann_env' t0 Eenv). 
-      destruct e as [[]]. unfold bind_pir_env in tl_let. cbn in tl_let.
-      inversion tl_let. admit.
-    + admit.
-      (* destruct (find (fun nm => Kernames.eq_kername kn nm) pir_ignore_default) eqn:Edefault. *)
-      (* destruct (kn == (Kernames.MPfile ["BinNums"; "Numbers"; "Coq"], "positive")) eqn:Etest.
-      * setoid_rewrite Etest in tl_env.
-        inversion tl_env. subst. 
-        now eapply IHΣ.
-      * setoid_rewrite Etest in tl_env.
-        destruct (kn == (Kernames.MPfile ["BinNums"; "Numbers"; "Coq"], "Z")) eqn:Etest2.
-        ** setoid_rewrite Etest2 in tl_env. *)
-    + admit.
-Admitted.
-
 Theorem stlc_correct : forall (Σ : global_env) Σ'
   t (ann_t : annots box_type t) t' v,
   (trans_env Σ) e⊢ t ⇓ v ->
   InSubset Σ [] t ->
-  (* translation for entries succeeds *)
+  (* declared entries have been substituted *)
   (forall kn decl cb ann_cb kn' vdecl cb', 
     EGlobalEnv.declared_constant (trans_env Σ) kn decl ->
     decl.(cst_body) = Some cb ->
     lookup_entry Σ' kn = Some (kn, kn', TermBind vdecl cb') ->
-    translatesTo remap_env Σ' [] cb ann_cb cb') ->
-  (* declared entries have been substituted *)
-  (forall kn kn' vdecl cb', lookup_entry Σ' kn = Some (kn, kn', TermBind vdecl cb') -> 
-    Var kn' = subst kn' cb' (Var kn')) ->
+    translatesTo remap_env Σ' [] cb ann_cb (Var kn')) ->
   translate_term remap_env Σ' [] t ann_t = Some t' ->
   exists ann_v v' k,
     translatesTo remap_env Σ' [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros Σ Σ' t ann_t t' v ev sub_t tlt_decl Hdecl_subst tlt.
+  intros Σ Σ' t ann_t t' v ev sub_t Hdecl_subst tlt.
   apply translate_reflect in tlt; try apply NoDup_nil.
   apply (val_in_sub Σ [] t v ev) in sub_t as sub_v.
   revert t' tlt; induction ev; 
@@ -368,27 +305,32 @@ Proof with (eauto using eval).
     inversion sub_fix.
   - (* const *)
     evar (ann_b : annots box_type body).
-    subst. inversion tlt. subst. destruct br.
-    apply Hdecl_subst in H4 as Hrw. simpl in Hrw. rewrite eqb_refl in Hrw. subst.
-    apply (IHev ann_b).
-    + admit.
+    eapply IHev.
+    + now assert (decl = decl0 /\ body = cb) by eauto using declared_constant_same.
     + assumption.
-    + eapply tlt_decl; eauto.
-      assert (decl = decl0). { admit. (* prove freshness *)}
-      subst. assumption.
+    + (* requires reasoning over Var that has already been substituted *)
+      assert (decl = decl0 /\ body = cb) by eauto using declared_constant_same.
+      destruct H3. inversion tlt. subst.
+      destruct br as [vd b].
+      eapply Hdecl_subst; try eassumption.
   - (* mkApps constr *)
     eapply val_in_sub in ev1 as sub_apps; eauto.
     apply mkApps_in_subset in sub_apps as [sub_constr _].
     inversion sub_constr.
-  - (* Atoms applied to values *)
+  - (* atoms applied to values *)
     subst. induction f16; inversion H1.
     + inversion ev1. subst. inversion i.
     + rewrite List.nth_error_nil in H0. discriminate H0.
     + inversion ev1. subst. inversion i.
-    + subst. (* Apply LetIn to value *) inversion tlt. 
-      inversion H4. admit.
-    + subst. (* Apply Apply to value *) admit.
-    + (* Apply Const to value*) admit.
+    + subst. (* apply LetIn to value *) 
+      inversion tlt. subst.
+      inversion H4. subst.
+      inversion ev1.
+      * subst. 
+        (* let proof again *) admit.
+      * subst. inversion H.
+    + subst. (* apply proof again *) admit.
+    + subst. (* const proof again *) admit.
  (* Atoms *)
   - subst. inversion tlt. exists ann. exists t''.
     subst. eexists. split. 
@@ -400,6 +342,8 @@ Proof with (eauto using eval).
     + apply tlt. 
     + apply E_LamAbs. eauto.
 Admitted.
+
+(* globals and let binding the environment *)
 
 Theorem stlc_no_globals : forall
   t (ann_t : annots box_type t) t' v,
@@ -416,18 +360,65 @@ Proof with (eauto using eval).
 Qed.
 
 Theorem stlc_one_global : forall
-  gdecl cb ann_cb (entry : entry) t ann_t t' v,
+  gdecl (ann_env : env_annots box_type [gdecl]) entry t ann_t t' v,
   (trans_env [gdecl]) e⊢ t ⇓ v ->
   InSubset [gdecl] [] t ->
-  lookup_constant_body [gdecl] gdecl.1.1 = Some cb ->
-  translate_term remap_env [entry] [] cb ann_cb = Some (get_entry_body entry) ->
+  translate_env remap_env [gdecl] ann_env = Ok [entry] -> 
   translate_term remap_env [entry] [] t ann_t = Some t' ->
   exists ann_v v' k,
     translatesTo remap_env [entry] [] v ann_v v' /\
     eval t' v' k.
 Proof with (eauto using eval).
-  intros gdecl cb ann_cb entry t ann_t t' v ev sub_t Hl tl_cb tlt.
-  eapply (stlc_correct [gdecl] [entry] t);
-  try discriminate; eauto.
-  * intros. admit.
+  intros gdecl ann_decl entry t ann_t t' v ev sub_t tlt_env tlt.
+  eapply (stlc_correct); try eauto.
+  (* establish invariant *) admit.
+Admitted.
+
+Lemma let_binding_env_correct : forall Σ' t ann_t t' t'',
+  translate_term remap_env (List.rev Σ') [] t ann_t = Some t'' ->
+  translate_term remap_env [] [] t ann_t = Some (bind_pir_env Σ' t').
+Proof.
+  intros. unfold bind_pir_env in *.
+  induction Σ'.
+Admitted.
+
+Lemma let_binding_eval_single : forall kn kn' ty br br' t' v' k i,
+  eval br br' k ->
+  eval (subst kn' br' t') v' i -> 
+  exists j, eval (bind_pir_env [((kn, kn'), TermBind (VarDecl kn' ty) br)] t') v' j.
+Proof.
+  intros. eexists.
+  unfold bind_pir_env. simpl.
+  constructor; eauto.
+  econstructor; eauto.
+  simpl. econstructor; eauto.
+Qed.
+
+Theorem stlc_program_correct : forall eΣ env_ann init cb t v t',
+  EGlobalEnv.declared_constant (trans_env eΣ) init cb ->
+  cb.(cst_body) = Some t ->
+  (trans_env eΣ) e⊢ t ⇓ v ->
+  all_in_subset eΣ ->
+  translate_typed_eprogram remap_env ((eΣ; env_ann), init) = Ok t' ->
+  exists ann_v v' k,
+    translatesTo remap_env [] [] v ann_v v' /\
+    eval t' v' k.
+Proof.
+  intros.
+  unfold translate_typed_eprogram in H3.
+  destruct (translate_env remap_env eΣ env_ann) as [Σ'|] eqn:tl_env; try discriminate.
+  apply translate_env_reflect in tl_env.
+  destruct (lookup_entry Σ' init) as [entry|] eqn:Hl; try discriminate.
+  induction tl_env; subst.
+  - inversion Hl.
+  - (* valid global *)
+    destruct decl; try inversion H4.
+    destruct entry0 as [[e_kn e_kn'] br].
+    destruct c. destruct br.
+    (* eapply (stlc_correct). *) admit.
+  - (* inductive is ignored instead of aborting the translation of the environment *)
+    hnf in H. simpl in H. 
+    destruct (init == kn); try discriminate.
+    unfold EGlobalEnv.declared_constant.
+    (* show that evaluation remains valid under the smaller environment *) admit.
 Admitted.
