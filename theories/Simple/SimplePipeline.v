@@ -6,8 +6,8 @@ From MetaCoq.Erasure Require Import EAst EProgram EWcbvEval.
 From MetaCoq.ErasurePlugin Require Import Erasure Loader.
 
 From VTL.Simple Require Import EAstToDB DBToPIR.
-From VTL.Semantics Require Import BigStepPIR.
-From VTL Require Import Pretty.
+From VTL.PlutusCert Require Import BigStepPIR.
+From VTL.Printing Require Import Pretty.
 
 (* A end-to-end pipeline from Coq/Gallina terms to PIR terms (with bogus types):
    Gallina ▷ TemplateRocq ▷ PCUIC ▷ λ□/EAst (without box type annotations) ▷ DB ▷ PIR *)

@@ -1,8 +1,9 @@
 #! /bin/bash
-# Execute Printer.v and run the generated .pir file through the plutus compiler
+# execute Printer.v and run the generated .pir file through the plutus compiler
+# this script depends on direct paths to the Plinth CLI tool
 out=./output/test.pir
 plutus_path=../plutus/plutus
-make # there's an error in ./src/PlutusIR/Analysis/Size.v atm, luckily this does not interrupt the pipeline
+make
 echo -e "\033[0;34mpir output:\033[0m"
 cat ${out}
 echo -e "\n"

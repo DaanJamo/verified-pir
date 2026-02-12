@@ -1,6 +1,6 @@
 From Coq Require Import String BinInt List.
 
-(* printer for dumping pretty-printed PIR terms to check with the Plutus CLI tool *)
+(* Printer for dumping pretty-printed PIR terms to check with the Plutus CLI tool *)
 (* From SimpleIO Require Import SimpleIO. *)
 From QuickChick Require Import Show.
 
@@ -20,7 +20,7 @@ Definition plus_ast : term :=
 
 (* Set stdin/stdout so we can run main from the command line *)
 (* RunIO IOMode Forward. *)
-(* Automatically assign the right integer types (hopefully) *)
+(* Automatically assign the right integer types *)
 (* RunIO Smart On. *)
 
 (* We test the pipeline starting from the λ□ identity function *)

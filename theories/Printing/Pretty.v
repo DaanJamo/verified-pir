@@ -1,8 +1,8 @@
 From Coq Require Import String BinInt List.
 
-(* afaik Rocq has no builtin string conversion methods
-for its primitive types so we import the ones from QuickChick *)
-(* but MetaRocq does for their own bytestring implementation *)
+(* Rocq has no builtin string conversion methods for its primitive types, 
+   so we import the Show instance from QuickChick. MetaRocq does, but only
+   for its own bytestring implementation. *)
 From QuickChick Require Import Show.
 Import ShowFunctions.
 
@@ -36,7 +36,6 @@ Definition sepr (sp : string) (strs : list string) : string :=
   string_concat (intersperse sp strs)
 .
 
-(* TODO: improve span *)
 Definition sexp (op : string) (strs : list string) : string :=
   "(" ++ op ++ " " (*++ newline*) ++ sep strs (*++ newline*) ++ ")"
 .
@@ -130,7 +129,6 @@ Instance ShowConstant : Show constant :=
   show := show_Constant
 |}.
 
-(* TODO: copy all the other functions *)
 Definition show_DefaultFun (df : DefaultFun) : string :=
   match df with
   | AddInteger => "addInteger"
@@ -154,7 +152,6 @@ Instance ShowDefaultFun : Show DefaultFun :=
   show := show_DefaultFun
 |}.
 
-(* Do we have datakinds? the plc pretty-printer does something with (type) here *)
 (*Fixpoint show_kind (k : kind) : string :=
   match k with
   | Kind_Base => "*"

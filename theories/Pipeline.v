@@ -101,6 +101,8 @@ Proof.
 Defined.
 
 (* Eval vm_compute in translate_env <# gal_id #>.1 false (KernameSet.singleton <%% gal_id %%>) []. *)
+(* Eval vm_compute in translate_env <# fold_left #>.1 false (KernameSet.singleton <%% fold_left %%>) []. *)
+
 
 Definition translate_program (p : Ast.Env.program) (dearg : bool) : typed_eprogram :=
   match to_kername p.2 with

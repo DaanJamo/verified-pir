@@ -1,16 +1,18 @@
 -Q theories VTL
 
 theories/Env.v
-theories/PIR.v
 theories/Pipeline.v
-theories/Pretty.v
-theories/Printer.v
-theories/PrettyPipeline.v
 theories/Semantics.v
-theories/Semantics/BigStepPIR.v
 theories/Subset.v
 theories/Translation.v
 theories/Utils.v
+
+theories/Printing/Pretty.v
+theories/Printing/Printer.v
+theories/Printing/PrettyPipeline.v
+
+theories/PlutusCert/BigStepPIR.v
+theories/PlutusCert/PIR.v
 
 theories/Simple/NamedToPIR.v
 theories/Simple/EAstToDB.v

@@ -1,3 +1,7 @@
+(* A subset of the step-indexed big-step semantics and substitution functions
+   from the Plutus-Cert project found here: https://github.com/basetunnel/plutus-cert/tree/master/src/PlutusIR/Semantics/Dynamic.
+   The goal of the verified-pir project is to interface with these definitions. *)
+
 From VTL Require Import PIR.
 Import PlutusNotations.
 
@@ -88,18 +92,6 @@ Inductive eval : term -> term -> nat -> Prop :=
   | E_Constant : forall j a,
       j = 0 ->
       Constant a =[j]=> Constant a
-  (* | E_Error : forall j T,
-      j = 0 ->
-      Error T =[j]=> Error T
-  | E_Error_Apply1 : forall j t1 t2 j1 T,
-      j = j1 + 1 ->
-      t1 =[j1]=> Error T ->
-      Apply t1 t2 =[j]=> Error T
-  | E_Error_Apply2 : forall j t1 t2 j2 T,
-      j = j2 + 1 ->
-      t2 =[j2]=> Error T ->
-      Apply t1 t2 =[j]=> Error T *)
-  (** let (non-recursive)*)
   | E_Let : forall bs t v j,
       Let bs t =[j]=>nr v ->
       Let bs t =[j]=> v
@@ -135,6 +127,9 @@ Notation "t '⇓ₚ' v" := (evaluatesTo t v) (at level 100).
 From MetaCoq.Utils Require Import monad_utils.
 From Coq Require Import Lia.
 From VTL Require Import Env.
+
+(* A functional equivalent of eval defined by the verified-pir project for testing *)
+Section evaluate.
 
 Import MCMonadNotation.
 
@@ -173,19 +168,6 @@ Definition eval_pir_unsafe (t : term) :=
 
 Definition eval_and_print_pir (t : term) := 
   print_as_program (eval_pir_unsafe t).
-
-(* Eval vm_compute in eval_and_print_pir 
-  (Let
-    [TermBind
-      (VarDecl "id"%string
-        (Ty_Fun (Ty_Builtin DefaultUniInteger) (Ty_Builtin DefaultUniInteger)))
-        (LamAbs "x"%string (Ty_Builtin DefaultUniInteger) (Var "x"%string));
-     TermBind
-      (VarDecl "id_twice"%string
-        (Ty_Fun (Ty_Builtin DefaultUniInteger) (Ty_Builtin DefaultUniInteger)))
-        (LamAbs "y"%string (Ty_Builtin DefaultUniInteger)
-          (Apply (Var "id"%string) (Var "y"%string)))]
-  (Apply (Var "id_twice"%string) (Var "id_twice"%string))). *)
 
 Lemma eval_subst : forall x v2 t v fuel,
   evaluate <{ [x := v2] t}> fuel = Some v ->
@@ -247,3 +229,5 @@ Proof.
     apply Hev3. lia.
   - now inversion Heval.
 Admitted.
+
+End evaluate.
