@@ -293,7 +293,6 @@ Definition subset_env_flags :=
 
 Local Existing Instance subset_env_flags.
 
-Print wellformed.
 Lemma wellformed_implies_subset : forall eΣ Γ t,
   @wellformed subset_env_flags (trans_env eΣ) (List.length Γ) t = true ->
   InSubset eΣ Γ t.
