@@ -22,6 +22,38 @@ Definition bvb (b : binding) : list binderName :=
   end.
 Definition bvbs (bs : list binding) := List.concat (map bvb bs).
 
+Definition remove_many {A} (A_dec : forall x y : A, {x = y} + {x <> y}) : list A -> list A -> list A :=
+  fun xs ys => fold_right (remove A_dec) ys xs.
+Notation "xs \ ys" := (remove_many string_dec ys xs) (at level 10).
+
+Section FreeVarBindings.
+
+Context (fvb : binding -> list string).
+
+Fixpoint fvbs (bs : list binding) : list string :=
+  match bs with
+  | nil     => []
+  | b :: bs => fvb b ++ (fvbs bs \ (bvb b))
+  end.
+
+End FreeVarBindings.
+
+Fixpoint fv (t : term) : list string :=
+  match t with
+    | Let bs t      => fvbs fvb bs ++ (bvbs bs \ (fv t))
+    | LamAbs n ty t => remove string_dec n (fv t)
+    | Var n         => [n]
+    | Apply s t     => fv s ++ fv t
+    | Constant v    => []
+    | Builtin d     => []
+    | Error e       => []
+  end
+
+with fvb (b : binding) : list string :=
+  match b with
+    | TermBind (VarDecl v _) t => fv t
+  end.
+
 Section SubstBindings.
   Context {subst_b : string -> term -> binding -> binding}.
 
@@ -126,11 +158,8 @@ Notation "t '⇓ₚ' v" := (evaluatesTo t v) (at level 100).
 
 From MetaCoq.Utils Require Import monad_utils.
 From Coq Require Import Lia.
-From VTL Require Import Env.
 
 (* A functional equivalent of eval defined by the verified-pir project for testing *)
-Section evaluate.
-
 Import MCMonadNotation.
 
 Fixpoint evaluate (t : term) (fuel : nat) : option term :=
@@ -229,5 +258,3 @@ Proof.
     apply Hev3. lia.
   - now inversion Heval.
 Admitted.
-
-End evaluate.

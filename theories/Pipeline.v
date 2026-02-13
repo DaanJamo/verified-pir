@@ -46,6 +46,10 @@ Import Common.Transform.Transform.
 Definition error_epT (err : string) : typed_eprogram := 
   (([]; tt), (MPfile [], "failed to erase program: " ^ (s_to_bs err))).
 
+Definition lookup_constant_body (env : ExAst.global_env) kn : option EAst.term :=
+  cst <- lookup_constant env kn ;;
+  cst_body cst.
+
 Definition eval_typed_eprogram (epT : typed_eprogram) (v : EAst.term) :=
   match epT with
   | (existT env ann, kn) => 

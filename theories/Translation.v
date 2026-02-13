@@ -4,7 +4,7 @@ From MetaCoq.Erasure.Typed Require Import Annotations.
 From MetaCoq.Erasure.Typed Require Import TypeAnnotations.
 From MetaCoq.Utils Require Import MCList MCString MCPrelude utils.
 
-From VTL Require Import Env PIR Utils.
+From VTL Require Import Env Entry PIR Utils.
 
 From Coq Require Import String BinInt List.
 
@@ -37,18 +37,6 @@ Definition pir_ignore_default : list kername :=
 
 Opaque pir_ignore_default.
 
-Section translate.
-
-Context (TT : env PIR.ty).
-
-Definition fresh_pair := kername * binderName. 
-Definition fresh_map := list (kername * binderName).
-
-Definition entry := fresh_pair * binding.
-
-Definition get_binder_names (Σ' : list fresh_pair) : list string :=
-  map snd Σ'.
-
 Definition gen_fresh_name na Σ' Γ :=
   match na with
   | nAnon => gen_fresh "anon" (get_binder_names Σ' ++ Γ)
@@ -58,7 +46,15 @@ Definition gen_fresh_name na Σ' Γ :=
 Lemma gen_fresh_name_fresh : forall Σ' Γ na,
   ~ In (gen_fresh_name na Σ' Γ) Γ.
 Admitted.
-  
+
+(* Interface so it is easy to add qualified part or change casing later *)
+Definition gen_fresh_binder_name (kn : kername) (Σ_fresh : fresh_map) :=
+  gen_fresh (kn.2) (get_binder_names Σ_fresh).
+
+Section translate.
+
+Context (TT : env PIR.ty).
+
 Definition translate_ty : box_type -> option PIR.ty :=
   fix go (ty : box_type) :=
   match ty with
@@ -71,22 +67,8 @@ Definition translate_ty : box_type -> option PIR.ty :=
   | _ => None
   end.
 
-(* Interface so it is easy to add qualified part or change casing later *)
-Definition gen_fresh_binder_name (kn : kername) (Σ_fresh : fresh_map) :=
-  gen_fresh (kn.2) (map snd Σ_fresh).
-
-Definition lookup_constant_body (env : ExAst.global_env) kn : option EAst.term :=
-  cst <- lookup_constant env kn ;;
-  cst_body cst.
-
-Definition lookup_entry (Σ' : list entry) (nm : kername) : option entry :=
-  find (fun '(kn, _, _) => eq_kername kn nm) Σ'.
-
-Definition lookup_fresh (Σ_fresh : list fresh_pair) (nm : kername) : option fresh_pair :=
-  find (fun '(kn, _) => eq_kername kn nm) Σ_fresh.
-
 Fixpoint translate_term
-         (Σ_fresh : list fresh_pair) (Γ : list string)
+         (frmap : fresh_map) (Γ : list string)
          (t : term) {struct t} : annots box_type t -> option PIR.term :=
   match t return annots box_type t -> option PIR.term with
   | tBox => fun b_ty => Some (PIR.Constant (ValueOf DefaultUniUnit tt)) (* temporary constant *)
@@ -98,35 +80,35 @@ Fixpoint translate_term
   | tLambda x b => fun '(ty, ann_b) =>
     match ty with
     | TArr br_ty _ =>
-      let x' := gen_fresh_name x Σ_fresh Γ in
+      let x' := gen_fresh_name x frmap Γ in
       br_ty' <- translate_ty br_ty ;;
-      b' <- translate_term Σ_fresh (x' :: Γ) b ann_b ;;
+      b' <- translate_term frmap (x' :: Γ) b ann_b ;;
       Some (LamAbs x' br_ty' b')
     | _ => None
     end
   | tLetIn x br b => fun '(ty, (ann_br, ann_b)) =>
     match ty with
     | TArr br_ty _ =>
-      let x' := gen_fresh_name x Σ_fresh Γ in
+      let x' := gen_fresh_name x frmap Γ in
       br_ty' <- translate_ty br_ty ;; 
-      br' <- translate_term Σ_fresh Γ br ann_br ;;
-      b' <- translate_term Σ_fresh (x' :: Γ) b ann_b ;;
+      br' <- translate_term frmap Γ br ann_br ;;
+      b' <- translate_term frmap (x' :: Γ) b ann_b ;;
       Some (Let [TermBind (VarDecl x' br_ty') br'] b')
     | _ => None
     end
   | tApp f a => fun '(_, (ann_f, ann_a)) =>
-    f' <- translate_term Σ_fresh Γ f ann_f ;;
-    a' <- translate_term Σ_fresh Γ a ann_a ;;
+    f' <- translate_term frmap Γ f ann_f ;;
+    a' <- translate_term frmap Γ a ann_a ;;
     Some (Apply f' a')
   | tConst kn => fun bt =>
-    match lookup_fresh Σ_fresh kn with
+    match lookup_fresh frmap kn with
     | Some (_, kn') => Some (Var kn')
     | None => None end
   | _ => fun _ => None
   end.
 
 Definition translate_constant
-           (Σ_fresh : fresh_map)
+           (frmap : fresh_map)
            (cst : constant_body)
            (kn : kername)
            (ann_c : constant_body_annots box_type cst) : option entry.
@@ -134,9 +116,9 @@ Proof.
   destruct cst as [[params ty] body].
   destruct body as [t|]; [|exact None]. (* no axioms allowed *)
   destruct (translate_ty ty) as [ty'|]; [|exact None].
-  destruct (translate_term Σ_fresh [] t ann_c) as [t'|]; [|exact None].
-  pose (kn' := gen_fresh_binder_name kn Σ_fresh).
-  exact (Some (kn, kn', TermBind (VarDecl kn' ty') t')).
+  destruct (translate_term frmap [] t ann_c) as [t'|]; [|exact None].
+  pose (kn' := gen_fresh_binder_name kn frmap).
+  exact (Some (kn, TermBind (VarDecl kn' ty') t')).
 Defined.
 
 Local Open Scope string_scope.
@@ -149,7 +131,7 @@ Fixpoint translate_env (eΣ : global_env) : env_annots box_type eΣ -> result (l
     | Ok Σ' =>
       match decl, ann_d with
       | ConstantDecl cst, ann_c =>
-        match translate_constant (map fst Σ') cst kn ann_c with
+        match translate_constant (to_fresh_map Σ') cst kn ann_c with
         | Some entry => Ok (entry :: Σ')
         | None => Err ("Failed to translate constant " ++ kn_to_s kn)
         end
@@ -165,12 +147,7 @@ Fixpoint translate_env (eΣ : global_env) : env_annots box_type eΣ -> result (l
   end.
 
 Definition bind_pir_env (Σ' : list entry) (body : PIR.term) : PIR.term :=
-  Let (map (fun '(_, _, b) => b) (rev Σ')) body.
-
-Definition get_entry_body (e : entry) : PIR.term :=
-  match e with
-  | (_, _, TermBind (VarDecl _ _) t') => t' 
-  end.
+  Let (map snd (rev Σ')) body.
 
 Definition typed_eprogram := (∑ env : ExAst.global_env, env_annots box_type env) * kername.
 
@@ -179,7 +156,7 @@ Definition translate_typed_eprogram (epT : typed_eprogram) : result PIR.term str
   match translate_env eΣ ann_env with
   | Ok Σ' =>
     match lookup_entry Σ' init with
-    | Some (_, init', _) => Ok (bind_pir_env Σ' (Var init'))
+    | Some (_, TermBind (VarDecl init' _) _) => Ok (bind_pir_env Σ' (Var init'))
     | None => Err ("Initial definition " ++ kn_to_s init ++ " not found in environment.") end
   | Err e => Err ("Failed to translate environment: " ++ e) end.
 
@@ -208,34 +185,34 @@ Proof.
     + now apply tlty_ind.
 Qed.
 
-Inductive translatesTo (Σ_fresh : fresh_map) (Γ : list string) : forall (t : term),
+Inductive translatesTo (frmap : fresh_map) (Γ : list string) : forall (t : term),
   annots box_type t -> PIR.term -> Prop :=
-  | tlt_tt : forall ann, translatesTo Σ_fresh Γ tBox ann (Constant (ValueOf DefaultUniUnit tt))
+  | tlt_tt : forall ann, translatesTo frmap Γ tBox ann (Constant (ValueOf DefaultUniUnit tt))
   | tlt_rel : forall n x ann,
       find_index_string Γ x = Some n ->
-      translatesTo Σ_fresh Γ (tRel n) ann (Var x)
+      translatesTo frmap Γ (tRel n) ann (Var x)
   | tlt_lambda : forall x x' arg_ty res_ty b ann_b arg_ty' b',
       translatesTypeTo arg_ty arg_ty' ->
-      translatesTo Σ_fresh (x' :: Γ) b ann_b b' ->
-      translatesTo Σ_fresh Γ (tLambda x b) (TArr arg_ty res_ty, ann_b) (LamAbs x' arg_ty' b')
+      translatesTo frmap (x' :: Γ) b ann_b b' ->
+      translatesTo frmap Γ (tLambda x b) (TArr arg_ty res_ty, ann_b) (LamAbs x' arg_ty' b')
   | tlt_let : forall x x' br_ty b_ty br b ann_br ann_b br_ty' br' b',
       translatesTypeTo br_ty br_ty' ->
-      translatesTo Σ_fresh Γ br ann_br br' ->
-      translatesTo Σ_fresh (x' :: Γ) b ann_b b' ->
-      translatesTo Σ_fresh Γ (tLetIn x br b) (TArr br_ty b_ty, (ann_br, ann_b)) (Let [(TermBind (VarDecl x' br_ty') br')] b')
+      translatesTo frmap Γ br ann_br br' ->
+      translatesTo frmap (x' :: Γ) b ann_b b' ->
+      translatesTo frmap Γ (tLetIn x br b) (TArr br_ty b_ty, (ann_br, ann_b)) (Let [(TermBind (VarDecl x' br_ty') br')] b')
   | tlt_app : forall t1 t2 ann_t1 ann_t2 ty t1' t2',
-      translatesTo Σ_fresh Γ t1 ann_t1 t1' ->
-      translatesTo Σ_fresh Γ t2 ann_t2 t2' ->
-      translatesTo Σ_fresh Γ (tApp t1 t2) (ty, (ann_t1, ann_t2)) (PIR.Apply t1' t2')
+      translatesTo frmap Γ t1 ann_t1 t1' ->
+      translatesTo frmap Γ t2 ann_t2 t2' ->
+      translatesTo frmap Γ (tApp t1 t2) (ty, (ann_t1, ann_t2)) (PIR.Apply t1' t2')
   | tlt_const : forall kn kn' ann,
-      lookup_fresh Σ_fresh kn = Some (kn, kn') ->
-      translatesTo Σ_fresh Γ (tConst kn) ann (Var kn').
+      lookup_fresh frmap kn = Some (kn, kn') ->
+      translatesTo frmap Γ (tConst kn) ann (Var kn').
 
-Theorem translate_reflect : forall (Σ_fresh : fresh_map) Γ t t' (ann : annots box_type t),
+Theorem translate_reflect : forall (frmap : fresh_map) Γ t t' (ann : annots box_type t),
   NoDup Γ ->
-  translate_term Σ_fresh Γ t ann = Some t' -> translatesTo Σ_fresh Γ t ann t'.
+  translate_term frmap Γ t ann = Some t' -> translatesTo frmap Γ t ann t'.
 Proof.
-  intros Σ_fresh Γ t. revert Γ. induction t; try discriminate; 
+  intros frmap Γ t. revert Γ. induction t; try discriminate; 
   intros Γ t' ann nodup tl_t; inversion tl_t as [Ht].
   - apply tlt_tt.
   - destruct (nth_error Γ n) eqn:El; [|discriminate].
@@ -243,8 +220,8 @@ Proof.
     now apply nth_error_to_find_index in El. 
   - destruct ann as [[] ann_b]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
-    destruct (translate_term Σ_fresh (gen_fresh_name na Σ_fresh Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; 
-    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na Σ_fresh Γ). 
+    destruct (translate_term frmap (gen_fresh_name na frmap Γ :: Γ) t ann_b) as [b'|] eqn:tl_b; 
+    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na frmap Γ). 
     assert (nodup' : NoDup (na' :: Γ)).
     apply NoDup_cons; try assumption.
     apply gen_fresh_name_fresh.
@@ -253,9 +230,9 @@ Proof.
     now apply tlt_lambda.
   - destruct ann as [[] [ann_br ann_b]]; try discriminate.
     destruct (translate_ty dom) as [br_ty'|] eqn:tl_ty; [|discriminate].
-    destruct (translate_term Σ_fresh Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
-    destruct (translate_term Σ_fresh (gen_fresh_name na Σ_fresh Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; 
-    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na Σ_fresh Γ).
+    destruct (translate_term frmap Γ t1 ann_br) as [br'|] eqn:tl_br; [|discriminate].
+    destruct (translate_term frmap (gen_fresh_name na frmap Γ :: Γ) t2 ann_b) as [b'|] eqn:tl_b; 
+    [|discriminate]. inversion Ht as [Ht']. set (na' := gen_fresh_name na frmap Γ).
     assert (nodup' : NoDup (na' :: Γ)).
     apply NoDup_cons; try assumption. 
     apply gen_fresh_name_fresh.
@@ -264,72 +241,72 @@ Proof.
     apply (translate_type_reflect dom br_ty') in tl_ty.
     now apply tlt_let.
   - destruct ann as [ty [ann_t1 ann_t2]].
-    destruct (translate_term Σ_fresh Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
-    destruct (translate_term Σ_fresh Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
+    destruct (translate_term frmap Γ t1 ann_t1) as [t1'|] eqn:tl_t1; [|discriminate].
+    destruct (translate_term frmap Γ t2 ann_t2) as [t2'|] eqn:tl_t2; [|discriminate].
     inversion Ht as [Ht'].
     specialize (IHt1 Γ t1' ann_t1 nodup tl_t1).
     specialize (IHt2 Γ t2' ann_t2 nodup tl_t2).
     now apply tlt_app.
-  - destruct (lookup_fresh Σ_fresh k) as [[kn kn']|] eqn:El; [|discriminate].
+  - destruct (lookup_fresh frmap k) as [[kn kn']|] eqn:El; [|discriminate].
     invs Ht. apply find_some in El as Hl.
     destruct Hl as [Hin Heq]. apply ReflectEq.eqb_eq in Heq. subst.
     now eapply tlt_const.
 Qed.
 
-Definition translatesConstant (Σ_fresh : fresh_map) 
+Definition translatesConstant (frmap : fresh_map) 
            (cb : constant_body) (ann_cb : constant_body_annots box_type cb)
            (cb' : entry) : Prop.
 Proof.
   destruct cb as [args cst_body].
-  destruct cb' as [[e_kn e_kn'] [v t']].
+  destruct cb' as [e_kn [vd t']].
   - destruct cst_body.
-    + exact (translatesTo Σ_fresh [] t ann_cb t').
+    + exact (translatesTo frmap [] t ann_cb t').
     + exact False.
 Defined.
 
-Definition translatesDecl (Σ_fresh : fresh_map) 
+Definition translatesDecl (frmap : fresh_map) 
            (decl : global_decl) (ann_decl : global_decl_annots box_type decl)
            (entry : entry) : Prop.
 Proof.
   destruct decl.
   - simpl in ann_decl.
-    exact (translatesConstant Σ_fresh c ann_decl entry).
+    exact (translatesConstant frmap c ann_decl entry).
   - exact False.
   - exact False.
 Defined.
 
-Inductive translatesEnv : forall (Σ : global_env) (Σ' : list entry), env_annots box_type Σ -> Prop :=
+Inductive translatesEnv : forall (eΣ : global_env) (Σ' : list entry), env_annots box_type eΣ -> Prop :=
   | tlte_empty : forall ann_env, translatesEnv [] [] ann_env
-  | tlte_const : forall Σ Σ' kn deps decl ann_decl entry ann_env,
-      translatesDecl (map fst Σ') decl ann_decl entry ->
-      translatesEnv Σ Σ' ann_env ->
-      translatesEnv (((kn, deps), decl) :: Σ) (entry :: Σ') (ann_decl, ann_env)
-  | tlte_remap : forall Σ Σ' kn deps ind ann_ind ann_env,
+  | tlte_const : forall eΣ Σ' kn deps decl ann_decl entry ann_env,
+      translatesDecl (to_fresh_map Σ') decl ann_decl entry ->
+      translatesEnv eΣ Σ' ann_env ->
+      translatesEnv (((kn, deps), decl) :: eΣ) (entry :: Σ') (ann_decl, ann_env)
+  | tlte_remap : forall eΣ Σ' kn deps ind ann_ind ann_env,
       find (fun nm : kername => kn == nm) pir_ignore_default = Some kn ->
-      translatesEnv Σ Σ' ann_env ->
-      translatesEnv (((kn, deps), InductiveDecl ind) :: Σ) Σ' (ann_ind, ann_env).
+      translatesEnv eΣ Σ' ann_env ->
+      translatesEnv (((kn, deps), InductiveDecl ind) :: eΣ) Σ' (ann_ind, ann_env).
 
-Theorem translate_env_reflect : forall Σ Σ' ann_env,
-  translate_env Σ ann_env = Ok Σ' -> translatesEnv Σ Σ' ann_env.
+Theorem translate_env_reflect : forall (eΣ : global_env) (Σ' : list entry) ann_env,
+  translate_env eΣ ann_env = Ok Σ' -> translatesEnv eΣ Σ' ann_env.
 Proof.
-  intros Σ Σ' ann_env tl_env.
-  revert Σ' tl_env; induction Σ; intros.
-  - inversion tl_env. 
+  intros eΣ Σ' ann_env tl_env.
+  revert Σ' tl_env; induction eΣ; intros.
+  - inversion tl_env.
     apply tlte_empty.
   - destruct ann_env as [ann_decl ann_env'].
     destruct a as [[kn deps] decl].
     simpl in tl_env.
-    destruct (translate_env Σ ann_env') as [Σ''|err] eqn:tl_env'; try discriminate.
+    destruct (translate_env eΣ ann_env') as [Σ''|err] eqn:tl_env'; try discriminate.
     destruct decl.
-    + destruct (translate_constant (map fst Σ'') c kn ann_decl) eqn:tl_constant; try discriminate.
+    + destruct (translate_constant (to_fresh_map Σ'') c kn ann_decl) eqn:tl_constant; try discriminate.
       inversion tl_env. subst.
       econstructor. simpl.
       destruct c as [[nm ty] [t|]]; try discriminate.
       * simpl in tl_constant.
         destruct (translate_ty ty) eqn:tl_ty; try discriminate.
-        destruct (translate_term (map fst Σ'') [] t ann_decl) eqn:tl_t; try discriminate.
+        destruct (translate_term (to_fresh_map Σ'') [] t ann_decl) eqn:tl_t; try discriminate.
         apply translate_reflect in tl_t; [|apply NoDup_nil].
-        destruct e as [[e_kn e_kn'] [v t']]. simpl.
+        destruct e as [e_kn [vd t']]. simpl.
         inversion tl_constant. subst t1.
         assumption.
       * eauto.

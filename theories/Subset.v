@@ -5,7 +5,7 @@ From MetaCoq.Erasure.Typed Require Import Annotations WcbvEvalAux.
 From MetaCoq.Erasure Require Import EAst ECSubst EGlobalEnv ELiftSubst EWellformed.
 From MetaCoq.Erasure.Typed Require Import ExAst.
 
-From VTL Require Import PIR BigStepPIR Translation Utils.
+From VTL Require Import Entry PIR BigStepPIR Translation Utils.
 
 Existing Instance EWcbvEval.default_wcbv_flags.
 
@@ -46,11 +46,6 @@ Inductive EnvInSubset : global_env -> Prop :=
       EnvInSubset eΣ ->
       EnvInSubset (((kn, deps), InductiveDecl ind) :: eΣ).
 
-Definition all_in_subset eΣ :=
-  forall c decl, 
-    declared_constant (trans_env eΣ) c decl -> 
-    exists t, EAst.cst_body decl = Some t /\ InSubset eΣ [] t.
-
 Inductive ProgramInSubset (eΣ : global_env) (init : kername) : Prop :=
   | PS_Constants :
     EnvInSubset eΣ ->
@@ -83,10 +78,10 @@ Fixpoint env_annots_sensible
          (eΣ : global_env) (ann_env : env_annots box_type eΣ) : bool :=
   match eΣ, ann_env with
   | [], tt => true
-  | (((_, _), ConstantDecl cb)::eΣ'), (ann_decl, ann_env') => 
-      constant_annots_sensible TT ignore cb ann_decl && env_annots_sensible TT ignore eΣ' ann_env'
-  | (((kn, _), InductiveDecl _)::eΣ'), (ann_decl, ann_env') => 
-      isSome (find (fun nm : kername => kn == nm) ignore) && env_annots_sensible TT ignore eΣ' ann_env'
+  | (((_, _), ConstantDecl cb)::Σ'), (ann_decl, ann_env') => 
+      constant_annots_sensible TT ignore cb ann_decl && env_annots_sensible TT ignore Σ' ann_env'
+  | (((kn, _), InductiveDecl _)::Σ'), (ann_decl, ann_env') => 
+      isSome (find (fun nm : kername => kn == nm) ignore) && env_annots_sensible TT ignore Σ' ann_env'
   | _, _ => false
   end.
 
@@ -209,13 +204,14 @@ Proof.
   - assumption.
 Admitted.
 
-Lemma tlt_in_sub : forall TT eΣ Σ' Γ t ann t',
-  translatesTo TT Σ' Γ t ann t' ->
+Lemma tlt_in_sub : forall TT eΣ Σ' ann_env Γ t ann t',
+  translatesEnv TT eΣ Σ' ann_env ->
+  translatesTo TT (to_fresh_map Σ') Γ t ann t' ->
   InSubset eΣ Γ t.
 Proof.
-  intros. induction H; subst.
+  intros. rename H0 into tlt. induction tlt; subst.
   - constructor.
-  - econstructor. now apply find_index_to_nth_error in H.
+  - econstructor. now apply find_index_to_nth_error in H0.
   - now eapply S_tLambda.
   - now eapply S_tLet.
   - now apply S_tApp.

@@ -1,5 +1,6 @@
 -Q theories VTL
 
+theories/Entry.v
 theories/Env.v
 theories/Pipeline.v
 theories/Semantics.v

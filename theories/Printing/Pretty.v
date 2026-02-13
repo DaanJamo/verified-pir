@@ -259,6 +259,6 @@ Definition print_as_program (t : term) :=
   sexp "program" ["1.1.0" ; show t]
 .
 
-Definition let_test := let binding := TermBind (VarDecl "y" (Ty_Builtin DefaultUniInteger)) (Constant (ValueOf DefaultUniInteger 1)) in
+(* Definition let_test := let binding := TermBind (VarDecl "y" (Ty_Builtin DefaultUniInteger)) (Constant (ValueOf DefaultUniInteger 1)) in
  Let [binding] (Apply (LamAbs "x" (Ty_Builtin DefaultUniInteger) (Var "x")) (Var "y")).
-Eval cbv in print_as_program let_test.
+Eval cbv in print_as_program let_test. *)
