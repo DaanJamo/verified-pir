@@ -1,11 +1,12 @@
+[![DOI](https://zenodo.org/badge/932826354.svg)](https://doi.org/10.5281/zenodo.18657494)
+
 # A Verified Extraction for PIR
 
 This project aims to provide an end-to-end certified pipeline from Rocq
 to Plutus Core, by defining a verified translation from [LambdaBox-Typed](https://github.com/AU-COBRA/ConCert) to [Plutus Intermediate Language](https://plutus.cardano.intersectmbo.org/docs/essential-concepts/plinth-and-plutus-core).
 This translation bridges the gap between [MetaRocq's verified erasure](https://github.com/MetaRocq/metarocq?tab=readme-ov-file#erasure) procedure and the [Plutus-Cert translation certifier](https://github.com/basetunnel/plutus-cert). Currently, it supports a subset of $\lambda_\square^T$ consisting of the simply-typed $\lambda$-calculus with global definitions.
 
-The main files are [Translation.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Translation.v) which defines the translation as a function and a logical relation, [Semantics.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Semantics.v) which contains proofs to show that our translation preserves the evluation semantics of programs within our supported subset, and [Pipeline.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Pipeline.v) which defines a (not yet verified) end-to-end extraction procedure
-from Rocq to PIR.
+The main files are [Translation.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Translation.v) which defines the translation as a function and a logical relation, [Semantics.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Semantics.v) which contains proofs to show that our translation preserves the evluation semantics of programs within our supported subset, and [Pipeline.v](https://github.com/DaanJamo/verified-pir/blob/main/theories/Pipeline.v) which defines a (not yet verified) end-to-end extraction procedure from Rocq to PIR.
 
 ## Setup & Usage
 
